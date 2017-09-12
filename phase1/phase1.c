@@ -52,17 +52,41 @@ unsigned int nextPid = SENTINELPID;
 void startup(int argc, char *argv[])
 {
     int result; /* value returned by call to fork1() */
+    int i = 0;
+    procStruct current;
 
     /* initialize the process table */
     if (DEBUG && debugflag)
         USLOSS_Console("startup(): initializing process table, ProcTable[]\n");
+    for (i = 0; i < MAXPROC; i++) {
+        current = ProcTable[i];
+
+        current.nextProcPtr = NULL;
+        current.childProcPtr = NULL;
+        current.nextSiblingPtr = NULL;
+        current.pid = -1;               /* process id */
+        current.priority = MINPRIORITY;
+        current.startFunc = NULL;   /* function where process begins -- launch */
+        current.stack = NULL;
+        current.stackSize = 0;
+        current.status = UNUSED;
+    }
 
     // Initialize the Ready list, etc.
     if (DEBUG && debugflag)
         USLOSS_Console("startup(): initializing the Ready list\n");
+    
     ReadyList = NULL;
 
     // Initialize the clock interrupt handler
+    // not correct yet
+    USLOSS_IntVec[USLOSS_CLOCK_INT] = clockHandler;
+    USLOSS_IntVec[USLOSS_ALARM_INT] = alarmHandler;
+    USLOSS_IntVec[USLOSS_DISK_INT] = diskHandler;
+    USLOSS_IntVec[USLOSS_TERM_INT] = terminalHandler;
+    USLOSS_IntVec[USLOSS_MMU_INT] = mmuHandler;
+    USLOSS_IntVec[USLOSS_SYSCALL_INT] = syscallHandler;
+    USLOSS_IntVec[USLOSS_ILLEGAL_INT] = illegalHandler;
 
     // startup a sentinel process
     if (DEBUG && debugflag)
@@ -122,42 +146,131 @@ int fork1(char *name, int (*startFunc)(char *), char *arg,
           int stacksize, int priority)
 {
     int procSlot = -1;
+    int i = 0;
 
     if (DEBUG && debugflag)
         USLOSS_Console("fork1(): creating process %s\n", name);
 
-    // test if in kernel mode; halt if in user mode
-    if (USLOSS_PsrGet() & USLOSS_PSR_CURRENT_MODE) {
-        USLOSS_Console("kernel mode\n");
+
+
+    // test if in kernel mode (1); halt if in user mode (0)
+    if (!(USLOSS_PsrGet() & USLOSS_PSR_CURRENT_MODE)) {
+        USLOSS_Console("fork1(): Not in kernel mode. Halting...\n");
         USLOSS_Halt(1);
     }
+
 
     // Return if stack size is too small
     if (stacksize < USLOSS_MIN_STACK) {
-        USLOSS_Console("stack size too small");
-        USLOSS_Halt(1);
+        USLOSS_Console("fork1(): Stack size too small.\n");
+        return STACK_SIZE_TOO_SMALL;
     }
 
-    // Is there room in the process table? What is the next PID?
 
-    // fill-in entry in process table */
+    // Is there room in the process table? What is the next PID?
+    for (i = 0; i < MAXPROC; i++) {
+        if (ProcTable[(nextPid-1) % MAXPROC].status != UNUSED) nextPid++;
+        else break;
+    }
+    if (i == MAXPROC) {
+        USLOSS_Console("fork1(): Processtable full.\n");
+        return PROCESS_TABLE_FULL;
+    }
+
+
+    // check priority
+    if (priority > MINPRIORITY || priority < MAXPRIORITY) {
+        if (priority != SENTINELPRIORITY || strcmp("sentinel", name) != 0) {
+            USLOSS_Console("fork1(): Priority out of range.\n");
+            return PRIORITY_OUT_OF_RANGE;
+        }
+    }
+
+
+    // check startFunc
+    if (startFunc == NULL) {
+        USLOSS_Console("fork1(): startFunc is NULL.\n");
+        return STARTFUNC_NULL;
+    }
+
+
+    // check name
+    if (name == NULL) {
+        USLOSS_Console("fork1(): name is NULL.\n");
+        return NAME_NULL;
+    }
+
+
     if ( strlen(name) >= (MAXNAME - 1) ) {
         USLOSS_Console("fork1(): Process name is too long.  Halting...\n");
         USLOSS_Halt(1);
     }
-    strcpy(ProcTable[procSlot].name, name);
-    ProcTable[procSlot].startFunc = startFunc;
-    if ( arg == NULL )
+
+    ////////////////////////////////////////////////////
+    if (DEBUG && debugflag)
+        USLOSS_Console("after error checking\n");
+
+    // fill-in entry in process table
+
+    procSlot = nextPid - 1;
+
+    strcpy(ProcTable[procSlot].name, name);         // set the process name
+    ProcTable[procSlot].startFunc = startFunc;      // set the start function
+
+
+    // set the argument to the start function
+    if ( arg == NULL ) {
         ProcTable[procSlot].startArg[0] = '\0';
+    }
     else if ( strlen(arg) >= (MAXARG - 1) ) {
         USLOSS_Console("fork1(): argument too long.  Halting...\n");
         USLOSS_Halt(1);
     }
-    else
+    else {
         strcpy(ProcTable[procSlot].startArg, arg);
+    }
+
+
+
+
+    ProcTable[procSlot].childProcPtr = NULL;
+    ProcTable[procSlot].nextSiblingPtr = NULL;
+
+
+
+    // set pointers so that parent knows where its child is
+    if (priority != SENTINELPRIORITY){
+        procPtr temp = Current->childProcPtr;
+        if (temp == NULL) Current->childProcPtr = &ProcTable[procSlot];
+        while (temp->nextSiblingPtr != NULL) {
+            temp = temp->nextSiblingPtr;
+        }
+        temp->nextSiblingPtr = &ProcTable[procSlot];
+    }
+
+
+    ProcTable[procSlot].pid = nextPid;              // set pid
+
+    ProcTable[procSlot].priority = priority;        // set priority
+
+    ProcTable[procSlot].stack = malloc(stacksize);  // set stack
+    if (ProcTable[procSlot].stack == NULL) {
+        USLOSS_Console("fork1(): Out of memory for stack.\n");
+        return OUT_OF_MEMORY;
+    }
+
+    ProcTable[procSlot].stackSize = stacksize;      // set stackSize
+
+    ProcTable[procSlot].status = READY;             // set READY status
+
+
+    // add to ready list
+    //addToReadyList(&ProcTable[procSlot]);
 
     // Initialize context for this process, but use launch function pointer for
     // the initial value of the process's program counter (PC)
+
+    i = USLOSS_PsrSet(USLOSS_PsrGet() | USLOSS_PSR_CURRENT_INT); // enable interrupts
 
     USLOSS_ContextInit(&(ProcTable[procSlot].state),
                        ProcTable[procSlot].stack,
@@ -170,7 +283,9 @@ int fork1(char *name, int (*startFunc)(char *), char *arg,
 
     // More stuff to do here...
 
-    return -1;  // -1 is not correct! Here to prevent warning.
+    // call dispatcher
+
+    return nextPid++;
 } /* fork1 */
 
 /* ------------------------------------------------------------------------
@@ -292,3 +407,13 @@ void disableInterrupts()
     // halt USLOSS
 
 } /* disableInterrupts */
+
+
+
+void clockHandler (int interruptType, void* arg) {}
+void alarmHandler (int interruptType, void* arg) {}
+void diskHandler (int interruptType, void* arg) {}
+void terminalHandler (int interruptType, void* arg) {}
+void mmuHandler (int interruptType, void* arg) {}
+void syscallHandler (int interruptType, void* arg) {}
+void illegalHandler (int interruptType, void* arg) {}

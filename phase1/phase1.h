@@ -6,6 +6,8 @@
 #define _PHASE1_H
 
 #include <usloss.h>
+// #include "kernel.h"
+
 
 /*
  * Maximum number of processes. 
@@ -54,5 +56,8 @@ extern int   readtime(void);
 extern void  p1_fork(int pid);
 extern void  p1_quit(int pid);
 extern void  p1_switch(int old, int new);
+
+
+
 
 #endif /* _PHASE1_H */

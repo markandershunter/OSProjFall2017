@@ -18,7 +18,9 @@ struct procStruct {
    char           *stack;
    unsigned int    stackSize;
    int             status;        /* READY, BLOCKED, QUIT, etc. */
+
    /* other fields as needed... */
+   procPtr         nextPriorityPtr;
 };
 
 struct psrBits {
@@ -34,10 +36,41 @@ union psrValues {
    unsigned int integerPart;
 };
 
+
+
+
+void  addToReadyList(procPtr proc);
+
+void clockHandler (int interruptType, void* arg);
+void alarmHandler (int interruptType, void* arg);
+void diskHandler (int interruptType, void* arg);
+void terminalHandler (int interruptType, void* arg);
+void mmuHandler (int interruptType, void* arg);
+void syscallHandler (int interruptType, void* arg);
+void illegalHandler (int interruptType, void* arg);
+
+
+
+
+
+
+
 /* Some useful constants.  Add more as needed... */
 #define NO_CURRENT_PROCESS NULL
 #define MINPRIORITY 5
 #define MAXPRIORITY 1
 #define SENTINELPID 1
 #define SENTINELPRIORITY (MINPRIORITY + 1)
+
+#define STACK_SIZE_TOO_SMALL -2
+#define PROCESS_TABLE_FULL -1
+#define PRIORITY_OUT_OF_RANGE -1
+#define STARTFUNC_NULL -1
+#define NAME_NULL -1
+#define OUT_OF_MEMORY -1
+
+#define UNUSED 0
+#define READY 1
+#define BLOCKED 2
+#define QUIT 3
 
