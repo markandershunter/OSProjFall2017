@@ -20,7 +20,6 @@ struct procStruct {
    int             status;        /* READY, BLOCKED, QUIT, etc. */
 
    /* other fields as needed... */
-   procPtr         nextPriorityPtr;
 };
 
 struct psrBits {

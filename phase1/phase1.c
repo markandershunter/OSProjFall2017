@@ -31,7 +31,7 @@ int debugflag = 1;
 procStruct ProcTable[MAXPROC];
 
 // Process lists
-static procPtr ReadyList;
+static procPtr ReadyList = NULL;
 
 // current process ID
 procPtr Current;
@@ -235,7 +235,7 @@ int fork1(char *name, int (*startFunc)(char *), char *arg,
 
     ProcTable[procSlot].childProcPtr = NULL;
     ProcTable[procSlot].nextSiblingPtr = NULL;
-
+    ProcTable[procSlot].nextProcPtr = NULL;
 
 
     // set pointers so that parent knows where its child is
@@ -265,7 +265,7 @@ int fork1(char *name, int (*startFunc)(char *), char *arg,
 
 
     // add to ready list
-    //addToReadyList(&ProcTable[procSlot]);
+    addToReadyList(&ProcTable[procSlot]);
 
     // Initialize context for this process, but use launch function pointer for
     // the initial value of the process's program counter (PC)
@@ -407,6 +407,18 @@ void disableInterrupts()
     // halt USLOSS
 
 } /* disableInterrupts */
+
+
+
+void addToReadyList(procPtr proc) {
+    if (ReadyList == NULL) {
+        ReadyList = proc;
+    }
+
+    // ReadyList is not empty
+
+    
+}
 
 
 
