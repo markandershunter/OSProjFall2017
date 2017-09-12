@@ -208,7 +208,7 @@ int fork1(char *name, int (*startFunc)(char *), char *arg,
 
     ////////////////////////////////////////////////////
     if (DEBUG && debugflag)
-        USLOSS_Console("after error checking\n");
+        USLOSS_Console("Done with error checking\n");
 
     // fill-in entry in process table
 
@@ -231,15 +231,14 @@ int fork1(char *name, int (*startFunc)(char *), char *arg,
     }
 
 
-
-
     ProcTable[procSlot].childProcPtr = NULL;
     ProcTable[procSlot].nextSiblingPtr = NULL;
     ProcTable[procSlot].nextProcPtr = NULL;
 
 
+
     // set pointers so that parent knows where its child is
-    if (priority != SENTINELPRIORITY){
+    if (Current != NULL){
         procPtr temp = Current->childProcPtr;
         if (temp == NULL) Current->childProcPtr = &ProcTable[procSlot];
         while (temp->nextSiblingPtr != NULL) {
@@ -247,6 +246,7 @@ int fork1(char *name, int (*startFunc)(char *), char *arg,
         }
         temp->nextSiblingPtr = &ProcTable[procSlot];
     }
+
 
 
     ProcTable[procSlot].pid = nextPid;              // set pid
@@ -259,13 +259,14 @@ int fork1(char *name, int (*startFunc)(char *), char *arg,
         return OUT_OF_MEMORY;
     }
 
+
     ProcTable[procSlot].stackSize = stacksize;      // set stackSize
 
     ProcTable[procSlot].status = READY;             // set READY status
 
 
-    // add to ready list
     addToReadyList(&ProcTable[procSlot]);
+
 
     // Initialize context for this process, but use launch function pointer for
     // the initial value of the process's program counter (PC)
@@ -284,6 +285,9 @@ int fork1(char *name, int (*startFunc)(char *), char *arg,
     // More stuff to do here...
 
     // call dispatcher
+    if (priority != SENTINELPRIORITY) {
+        Current = &ProcTable[procSlot];
+    }
 
     return nextPid++;
 } /* fork1 */
@@ -416,11 +420,12 @@ void addToReadyList(procPtr proc) {
 
     if (ReadyList == NULL) {
         ReadyList = proc;
+        return;
     }
 
     // ReadyList is not empty
 
-    while (curr != NULL && proc->priority >= curr->priority) {
+    while (curr != NULL && proc->priority <= curr->priority) {
         prev = curr;
         curr = curr->nextProcPtr;
     }
