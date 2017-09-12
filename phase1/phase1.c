@@ -411,13 +411,30 @@ void disableInterrupts()
 
 
 void addToReadyList(procPtr proc) {
+    procPtr curr = ReadyList;
+    procPtr prev = NULL;
+
     if (ReadyList == NULL) {
         ReadyList = proc;
     }
 
     // ReadyList is not empty
 
-    
+    while (curr != NULL && proc->priority >= curr->priority) {
+        prev = curr;
+        curr = curr->nextProcPtr;
+    }
+
+    // add to end of ReadyList
+    if (curr == NULL) {
+        prev->nextProcPtr = proc;
+    }
+
+    // add to end of its priority
+    else {
+        proc->nextProcPtr = curr;
+        prev->nextProcPtr = proc;
+    }
 }
 
 
