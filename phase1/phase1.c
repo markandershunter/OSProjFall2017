@@ -208,7 +208,7 @@ int fork1(char *name, int (*startFunc)(char *), char *arg,
 
     ////////////////////////////////////////////////////
     if (DEBUG && debugflag)
-        USLOSS_Console("after error checking\n");
+        USLOSS_Console("fork1(): done with error checking\n");
 
     // fill-in entry in process table
 
@@ -216,6 +216,9 @@ int fork1(char *name, int (*startFunc)(char *), char *arg,
 
     strcpy(ProcTable[procSlot].name, name);         // set the process name
     ProcTable[procSlot].startFunc = startFunc;      // set the start function
+
+    if (DEBUG && debugflag)
+        USLOSS_Console("fork1(): 1\n");
 
 
     // set the argument to the start function
@@ -230,16 +233,19 @@ int fork1(char *name, int (*startFunc)(char *), char *arg,
         strcpy(ProcTable[procSlot].startArg, arg);
     }
 
-
+    if (DEBUG && debugflag)
+        USLOSS_Console("fork1(): 2\n");
 
 
     ProcTable[procSlot].childProcPtr = NULL;
     ProcTable[procSlot].nextSiblingPtr = NULL;
     ProcTable[procSlot].nextProcPtr = NULL;
 
+    if (DEBUG && debugflag)
+        USLOSS_Console("fork1(): 3\n");
 
     // set pointers so that parent knows where its child is
-    if (priority != SENTINELPRIORITY){
+    if (Current != NULL){
         procPtr temp = Current->childProcPtr;
         if (temp == NULL) Current->childProcPtr = &ProcTable[procSlot];
         while (temp->nextSiblingPtr != NULL) {
@@ -247,6 +253,10 @@ int fork1(char *name, int (*startFunc)(char *), char *arg,
         }
         temp->nextSiblingPtr = &ProcTable[procSlot];
     }
+
+    if (DEBUG && debugflag)
+        USLOSS_Console("fork1(): 4\n");
+
 
 
     ProcTable[procSlot].pid = nextPid;              // set pid
@@ -259,18 +269,24 @@ int fork1(char *name, int (*startFunc)(char *), char *arg,
         return OUT_OF_MEMORY;
     }
 
+
     ProcTable[procSlot].stackSize = stacksize;      // set stackSize
 
     ProcTable[procSlot].status = READY;             // set READY status
 
+    if (DEBUG && debugflag)
+        USLOSS_Console("fork1(): 5\n");
 
-    // add to ready list
     addToReadyList(&ProcTable[procSlot]);
+
+    if (DEBUG && debugflag)
+        USLOSS_Console("fork1(): 6\n");
+
 
     // Initialize context for this process, but use launch function pointer for
     // the initial value of the process's program counter (PC)
 
-    i = USLOSS_PsrSet(USLOSS_PsrGet() | USLOSS_PSR_CURRENT_INT); // enable interrupts
+    enableInterrupts();
 
     USLOSS_ContextInit(&(ProcTable[procSlot].state),
                        ProcTable[procSlot].stack,
@@ -283,8 +299,10 @@ int fork1(char *name, int (*startFunc)(char *), char *arg,
 
     // More stuff to do here...
 
-    // call dispatcher
-    dispatcher();
+    // call dispatcher for everyone except Sentinel
+    if (priority != SENTINELPRIORITY) {
+        dispatcher();
+    }
 
     return nextPid++;
 } /* fork1 */
@@ -305,6 +323,8 @@ void launch()
         USLOSS_Console("launch(): started\n");
 
     // Enable interrupts
+    enableInterrupts();
+
 
     // Call the function passed to fork1, and capture its return value
     result = Current->startFunc(Current->startArg);
@@ -370,24 +390,45 @@ void dispatcher(void)
 
     procPtr nextProcess = NULL;
 
-    // Check if this is the first process that is being run
-    if(Current == NULL){
-        nextProcess = ReadyList;
-        p1_switch('\0', nextProcess->pid);
-        USLOSS_ContextSwitch(NULL, nextProcess->state);
-        Current = nextProcess;
-        USLOSS_Console("dispatcher(): Sentinel process started\n");
 
-    }else{
-        // Check if a higher priority process has been added to the ReadyList
-        if(Current.pid != ReadyList.pid){
+    // check if this is the first process that is being run
+    if (Current == NULL) {
+        nextProcess = ReadyList;
+        Current = nextProcess;
+        p1_switch('\0', nextProcess->pid);
+        enableInterrupts();
+        USLOSS_ContextSwitch(NULL, &nextProcess->state);
+        if (DEBUG && debugflag)
+            USLOSS_Console("dispatcher(): start1 process started\n");
+    }
+    else {
+        // check if a higher priority process has been added to the ReadyList
+        if (ReadyList->priority > Current->priority) {
+            nextProcess = ReadyList;
+            ReadyList = ReadyList->nextProcPtr;
+            p1_switch(Current->pid, nextProcess->pid);
+            enableInterrupts();
+            USLOSS_ContextSwitch(&Current->state, &nextProcess->state);
+            Current = nextProcess;
+        }
+        // is Current higher than all other processes?
+        else if (Current->priority > ReadyList->priority) {
+            // do nothing
+        }
+        // check if time slice has been reached
+        else if (0 && Current->priority == ReadyList->priority) {
+            // procPtr temp = ReadyList;
+            // while ()
+        }
+        else if (Current->pid != ReadyList->pid) {
             nextProcess = ReadyList;
             p1_switch(Current->pid, nextProcess->pid);
-            USLOSS_ContextSwitch(Current->state, nextProcess->state);
+            enableInterrupts();
+            USLOSS_ContextSwitch(&Current->state, &nextProcess->state);
             Current = nextProcess;
-        }else if(Current->status == BLOCKED){
+        } else if (Current->status == BLOCKED) {
 
-        }else if(Current->status == QUIT){
+        } else if (Current->status == QUIT) {
 
         }
 
@@ -426,6 +467,16 @@ static void checkDeadlock()
 } /* checkDeadlock */
 
 
+
+void enableInterrupts() {
+    // compiler gives warning if the return value of USLOSS_... is ignored,
+    // hence the int i = ... Also it gives a warning if i is unused, hence
+    // the i++;
+    int i = USLOSS_PsrSet(USLOSS_PsrGet() | USLOSS_PSR_CURRENT_INT);
+    i++;
+}
+
+
 /*
  * Disables the interrupts.
  */
@@ -440,13 +491,50 @@ void disableInterrupts()
 
 
 void addToReadyList(procPtr proc) {
+    procPtr curr = ReadyList;
+    procPtr prev = NULL;
+
+    if (DEBUG && debugflag)
+        USLOSS_Console("addToReadyList(): 1\n");
+
     if (ReadyList == NULL) {
         ReadyList = proc;
+        return;
     }
+
+    if (DEBUG && debugflag)
+        USLOSS_Console("addToReadyList(): 2\n");
 
     // ReadyList is not empty
 
 
+    // proc belongs at the head of the ready list because it
+    // is the highest priority
+    if (ReadyList->priority > proc->priority) {
+        proc->nextProcPtr = ReadyList;
+        ReadyList = proc;
+        return;
+    }
+
+    // proc belongs somewhere in the middle/ at the end of the ready
+    // list
+    while (curr != NULL && curr->priority <= proc->priority) {
+        if (DEBUG && debugflag)
+            USLOSS_Console("addToReadyList(): curr->name: %s\n", curr->name);
+        prev = curr;
+        curr = curr->nextProcPtr;
+    }
+
+    // add to end of ReadyList
+    if (curr == NULL) {
+        prev->nextProcPtr = proc;
+    }
+
+    // add to end of its priority
+    else {
+        proc->nextProcPtr = curr;
+        prev->nextProcPtr = proc;
+    }
 }
 
 

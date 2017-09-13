@@ -58,6 +58,6 @@ extern void  p1_quit(int pid);
 extern void  p1_switch(int old, int new);
 
 
-
+void enableInterrupts();
 
 #endif /* _PHASE1_H */
