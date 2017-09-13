@@ -390,7 +390,6 @@ void dispatcher(void)
 
     procPtr nextProcess = NULL;
 
-<<<<<<< HEAD
 
     // check if this is the first process that is being run
     if (Current == NULL) {
