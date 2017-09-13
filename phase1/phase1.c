@@ -245,13 +245,21 @@ int fork1(char *name, int (*startFunc)(char *), char *arg,
         USLOSS_Console("fork1(): 3\n");
 
     // set pointers so that parent knows where its child is
-    if (Current != NULL){
+    if (Current != NULL) {
         procPtr temp = Current->childProcPtr;
-        if (temp == NULL) Current->childProcPtr = &ProcTable[procSlot];
-        while (temp->nextSiblingPtr != NULL) {
-            temp = temp->nextSiblingPtr;
+        
+        //if Current has no child processes yet
+        if (temp == NULL) {
+            Current->childProcPtr = &ProcTable[procSlot];
         }
-        temp->nextSiblingPtr = &ProcTable[procSlot];
+        // if Current has at least one child process, add this process
+        // to end of sibling list
+        else {
+            while (temp->nextSiblingPtr != NULL) {
+                temp = temp->nextSiblingPtr;
+            }
+            temp->nextSiblingPtr = &ProcTable[procSlot];
+        }
     }
 
     if (DEBUG && debugflag)
