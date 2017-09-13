@@ -75,7 +75,7 @@ void startup(int argc, char *argv[])
     // Initialize the Ready list, etc.
     if (DEBUG && debugflag)
         USLOSS_Console("startup(): initializing the Ready list\n");
-    
+
     ReadyList = NULL;
 
     // Initialize the clock interrupt handler
@@ -100,7 +100,7 @@ void startup(int argc, char *argv[])
         }
         USLOSS_Halt(1);
     }
-  
+
     // start the test process
     if (DEBUG && debugflag)
         USLOSS_Console("startup(): calling fork1() for start1\n");
@@ -284,6 +284,7 @@ int fork1(char *name, int (*startFunc)(char *), char *arg,
     // More stuff to do here...
 
     // call dispatcher
+    dispatcher();
 
     return nextPid++;
 } /* fork1 */
@@ -318,14 +319,14 @@ void launch()
 
 /* ------------------------------------------------------------------------
    Name - join
-   Purpose - Wait for a child process (if one has been forked) to quit.  If 
+   Purpose - Wait for a child process (if one has been forked) to quit.  If
              one has already quit, don't wait.
-   Parameters - a pointer to an int where the termination code of the 
+   Parameters - a pointer to an int where the termination code of the
                 quitting process is to be stored.
    Returns - the process id of the quitting child joined on.
              -1 if the process was zapped in the join
              -2 if the process has no children
-   Side Effects - If no child process has quit before join is called, the 
+   Side Effects - If no child process has quit before join is called, the
                   parent is removed from the ready list and blocked.
    ------------------------------------------------------------------------ */
 int join(int *status)
@@ -361,9 +362,37 @@ void quit(int status)
    ----------------------------------------------------------------------- */
 void dispatcher(void)
 {
+    // test if in kernel mode (1); halt if in user mode (0)
+    if (!(USLOSS_PsrGet() & USLOSS_PSR_CURRENT_MODE)) {
+        USLOSS_Console("dispatcher(): Not in kernel mode. Halting...\n");
+        USLOSS_Halt(1);
+    }
+
     procPtr nextProcess = NULL;
 
-    p1_switch(Current->pid, nextProcess->pid);
+    // Check if this is the first process that is being run
+    if(Current == NULL){
+        nextProcess = ReadyList;
+        p1_switch('\0', nextProcess->pid);
+        USLOSS_ContextSwitch(NULL, nextProcess->state);
+        Current = nextProcess;
+        USLOSS_Console("dispatcher(): Sentinel process started\n");
+
+    }else{
+        // Check if a higher priority process has been added to the ReadyList
+        if(Current.pid != ReadyList.pid){
+            nextProcess = ReadyList;
+            p1_switch(Current->pid, nextProcess->pid);
+            USLOSS_ContextSwitch(Current->state, nextProcess->state);
+            Current = nextProcess;
+        }else if(Current->status == BLOCKED){
+
+        }else if(Current->status == QUIT){
+
+        }
+
+    }
+
 } /* dispatcher */
 
 
@@ -417,7 +446,7 @@ void addToReadyList(procPtr proc) {
 
     // ReadyList is not empty
 
-    
+
 }
 
 
