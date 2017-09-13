@@ -299,10 +299,15 @@ int fork1(char *name, int (*startFunc)(char *), char *arg,
 
     // More stuff to do here...
 
+<<<<<<< HEAD
     // call dispatcher for everyone except Sentinel
     if (priority != SENTINELPRIORITY) {
         dispatcher();
     }
+=======
+    // call dispatcher
+    dispatcher();
+>>>>>>> 93d02c42ec71176ceccf6929f3f982af00397c94
 
     return nextPid++;
 } /* fork1 */
@@ -390,6 +395,7 @@ void dispatcher(void)
 
     procPtr nextProcess = NULL;
 
+<<<<<<< HEAD
 
     // check if this is the first process that is being run
     if (Current == NULL) {
@@ -507,6 +513,7 @@ void addToReadyList(procPtr proc) {
 
     // ReadyList is not empty
 
+<<<<<<< HEAD
     // proc belongs at the head of the ready list because it
     // is the highest priority
     if (ReadyList->priority > proc->priority) {
@@ -534,6 +541,9 @@ void addToReadyList(procPtr proc) {
         proc->nextProcPtr = curr;
         prev->nextProcPtr = proc;
     }
+=======
+
+>>>>>>> 93d02c42ec71176ceccf6929f3f982af00397c94
 }
 
 
