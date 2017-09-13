@@ -284,9 +284,9 @@ int fork1(char *name, int (*startFunc)(char *), char *arg,
 
     // More stuff to do here...
 
-    // call dispatcher
+    // call dispatcher for everyone except Sentinel
     if (priority != SENTINELPRIORITY) {
-        dispatcher();
+        //
     }
 
     return nextPid++;
