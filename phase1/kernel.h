@@ -8,7 +8,10 @@ typedef struct procStruct * procPtr;
 struct procStruct {
    procPtr         nextProcPtr;
    procPtr         childProcPtr;
+   procPtr         prevSiblingPtr;
    procPtr         nextSiblingPtr;
+   procPtr         parentPtr;
+   procPtr         childQuitPtr;      /* the child who quit after join */
    char            name[MAXNAME];     /* process's name */
    char            startArg[MAXARG];  /* args passed to process */
    USLOSS_Context  state;             /* current context for process */
@@ -18,9 +21,12 @@ struct procStruct {
    char           *stack;
    unsigned int    stackSize;
    int             status;        /* READY, BLOCKED, QUIT, etc. */
-   int             joinStatus;    /* JOINED, INDEPENDENT */
    int             exitCode;
+   
    /* other fields as needed... */
+   int             startTime;       /* slice start time */
+   int             exitTime;        /* time that a process quit */
+   int             parentPid;
 };
 
 struct psrBits {
@@ -68,13 +74,12 @@ void illegalHandler (int interruptType, void* arg);
 #define STARTFUNC_NULL -1
 #define NAME_NULL -1
 #define OUT_OF_MEMORY -1
-#define NO_CHILD_PROCESS -2
-#define NO_INDEPENDENT_CHILDREN -2
+#define NO_CHILD_PROCESSES -2
 
 #define UNUSED 0
 #define READY 1
 #define BLOCKED 2
 #define QUIT 3
+#define BLOCKED_BY_BLOCKME 4
 
-#define INDEPENDENT 0
-#define JOINED 1
+#define WAITING_FOR_CHILD_TO_QUIT 11
