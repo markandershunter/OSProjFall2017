@@ -81,6 +81,6 @@ void illegalHandler (int interruptType, void* arg);
 #define READY 1
 #define BLOCKED 2
 #define QUIT 3
-#define BLOCKED_BY_BLOCKME 4
+#define RUNNING 4
 
 #define WAITING_FOR_CHILD_TO_QUIT 11
