@@ -53,27 +53,25 @@ void startup(int argc, char *argv[])
 {
     int result; /* value returned by call to fork1() */
     int i = 0;
-    procStruct current;
 
     /* initialize the process table */
     if (DEBUG && debugflag)
         USLOSS_Console("startup(): initializing process table, ProcTable[]\n");
     for (i = 0; i < MAXPROC; i++) {
-        current = ProcTable[i];
-
-        current.nextProcPtr = NULL;
-        current.childProcPtr = NULL;
-        current.prevSiblingPtr = NULL;
-        current.nextSiblingPtr = NULL;
-        current.parentPtr = NULL;
-        current.pid = -1;               /* process id */
-        current.priority = MINPRIORITY;
-        current.startFunc = NULL;   /* function where process begins -- launch */
-        current.stack = NULL;
-        current.stackSize = 0;
-        current.status = UNUSED;
-        current.exitTime = 0;
-        current.parentPid = -2;
+        ProcTable[i].nextProcPtr = NULL;
+        ProcTable[i].childProcPtr = NULL;
+        ProcTable[i].prevSiblingPtr = NULL;
+        ProcTable[i].nextSiblingPtr = NULL;
+        ProcTable[i].parentPtr = NULL;
+        ProcTable[i].pid = -1;               /* process id */
+        ProcTable[i].priority = MINPRIORITY;
+        ProcTable[i].startFunc = NULL;   /* function where process begins -- launch */
+        ProcTable[i].stack = NULL;
+        ProcTable[i].stackSize = 0;
+        ProcTable[i].status = UNUSED;
+        ProcTable[i].exitTime = 0;
+        ProcTable[i].parentPid = -2;
+        ProcTable[i].childCount = 0;
     }
 
     // Initialize the Ready list, etc.
@@ -252,8 +250,6 @@ int fork1(char *name, int (*startFunc)(char *), char *arg,
     if (Current != NULL){
         ProcTable[procSlot].parentPtr = Current;
         ProcTable[procSlot].parentPid = Current->pid;
-        USLOSS_Console("%d", ProcTable[procSlot].parentPid);
-
         if(Current->childProcPtr == NULL) {
             Current->childProcPtr = &ProcTable[procSlot];
         }
@@ -266,6 +262,7 @@ int fork1(char *name, int (*startFunc)(char *), char *arg,
             temp->nextSiblingPtr = &ProcTable[procSlot];
             ProcTable[procSlot].prevSiblingPtr = temp;
         }
+        Current->childCount++;
     }
 
     if (DEBUG && debugflag)
@@ -442,7 +439,7 @@ int join(int *status)
 
         Current->status = BLOCKED;
         dispatcher();
-        
+
         if (DEBUG && debugflag)
             USLOSS_Console("join(): %s woken up\n", Current->name);
     }
@@ -501,7 +498,7 @@ void quit(int status)
     free(Current->stack);
     Current->status = QUIT;
     Current->exitCode = status;
-    
+
     int i = USLOSS_DeviceInput(USLOSS_CLOCK_DEV, USLOSS_CLOCK_UNITS, &(Current->exitTime));
     i++;
 
@@ -532,7 +529,6 @@ void quit(int status)
    ----------------------------------------------------------------------- */
 void dispatcher(void)
 {
-
     // test if in kernel mode (1); halt if in user mode (0)
     if (!(USLOSS_PsrGet() & USLOSS_PSR_CURRENT_MODE)) {
         USLOSS_Console("dispatcher(): Not in kernel mode. Halting...\n");
@@ -554,10 +550,12 @@ void dispatcher(void)
 
         if (DEBUG && debugflag)
             USLOSS_Console("%s now running\n", Current->name);
-        
+
         p1_switch('\0', Current->pid);
         enableInterrupts();
         USLOSS_ContextSwitch(NULL, &Current->state);
+        int i = USLOSS_DeviceInput(USLOSS_CLOCK_DEV, USLOSS_CLOCK_UNITS, &(Current->startTime));
+        i++;
     }
 
     // check if a higher priority process has been added to the ReadyList
@@ -578,13 +576,16 @@ void dispatcher(void)
         p1_switch(oldProcess->pid, Current->pid);
         enableInterrupts();
         USLOSS_ContextSwitch(&oldProcess->state, &Current->state);
+        int i = USLOSS_DeviceInput(USLOSS_CLOCK_DEV, USLOSS_CLOCK_UNITS, &(Current->startTime));
+        i++;
+        USLOSS_Console("dispatcher(): start time is %d", Current->startTime);
     }
 
     // is Current higher than all other processes?
     else if (Current->priority < ReadyList->priority && Current->status == READY) {
         // do nothing
     }
-    
+
     // check if time slice has been reached
     else if (0 && Current->priority == ReadyList->priority) {
         // procPtr temp = ReadyList;
@@ -616,13 +617,30 @@ void dispatcher(void)
 void  dumpProcesses(void) {
     int i = 0;
     procPtr p = NULL;
+    char status[19];
 
-    USLOSS_Console("PID\tParent\tPriority\tStatus\t\t# Kids\tCPUtime\tName\n");
+    USLOSS_Console("%5s%11s%10s%15s%13s%10s%12s\n", "PID", "ParentPID", "Priority",  "Status", "Child Count", "CPU Time", "Name");
 
     for (i = 0; i < MAXPROC; i++) {
         p = &ProcTable[i];
+        strcpy(status, statusMatcher(p->status));
+        USLOSS_Console("%5d%11d%10d%15s%13d%10d%12s\n", p->pid, p->parentPid, p->priority,
+            status, p->childCount, readtime(), p->name);
+    }
+}
 
-        USLOSS_Console("%d\t%d\n", p->pid, p->parentPid);
+char * statusMatcher(int status){
+    switch(status){
+        case 0:
+            return "UNUSED";
+        case 1:
+            return "READY";
+        case 2:
+            return "BLOCKED";
+        case 3:
+            return "QUIT";
+        default:
+            return "BLOCKED_BY_BLOCKME";
     }
 }
 
@@ -767,6 +785,13 @@ void printReadyList() {
         USLOSS_Console("\t%s in ready list\n", curr->name);
         curr = curr->nextProcPtr;
     }
+}
+
+/*
+*   Return the CPU time (in ms) used by the current process
+*/
+int readtime(){
+    return Current->startTime - Current->exitTime;
 }
 
 

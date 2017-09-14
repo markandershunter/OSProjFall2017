@@ -22,11 +22,12 @@ struct procStruct {
    unsigned int    stackSize;
    int             status;        /* READY, BLOCKED, QUIT, etc. */
    int             exitCode;
-   
+
    /* other fields as needed... */
    int             startTime;       /* slice start time */
    int             exitTime;        /* time that a process quit */
    int             parentPid;
+   int             childCount;
 };
 
 struct psrBits {
