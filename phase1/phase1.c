@@ -504,13 +504,15 @@ void quit(int status)
 
     p1_quit(Current->pid);
 
-    if (Current->parentPtr != NULL && Current->parentPtr->status == BLOCKED) {
-        Current->parentPtr->status = READY;
-        addToReadyList(Current->parentPtr);
+    if (Current->parentPtr != NULL) {
+        Current->parentPtr->childCount = Current->parentPtr->childCount - 1;
 
-        Current->parentPtr->childQuitPtr = Current;
-        // does not address multiple children quitting while parent is blocked on join
-        // we must remember the child who quit FIRST
+        if (Current->parentPtr->status == BLOCKED) {
+            Current->parentPtr->status = READY;
+            addToReadyList(Current->parentPtr);
+
+            Current->parentPtr->childQuitPtr = Current;
+        }
     }
 
     dispatcher();
@@ -546,6 +548,7 @@ void dispatcher(void)
     // check if this is the first process that is being run
     if (Current == NULL) {
         Current = ReadyList;
+        Current->status = RUNNING;
         ReadyList = ReadyList->nextProcPtr;
 
         if (DEBUG && debugflag)
@@ -563,11 +566,16 @@ void dispatcher(void)
         if (DEBUG && debugflag)
             USLOSS_Console("%s has a higher priority than %s, %s will now run\n", ReadyList->name, Current->name, ReadyList->name);
 
-        if (Current->status != QUIT) addToReadyList(Current); // add Current back to ReadyList
+        // add Current back to ReadyList if it hasn't yet quit
+        if (Current->status != QUIT) {
+            Current->status = READY;
+            addToReadyList(Current);
+        }
         else if (DEBUG && debugflag) printReadyList();
 
         oldProcess = Current;
         Current = ReadyList;
+        Current->status = RUNNING;
         ReadyList = ReadyList->nextProcPtr;
 
         if (DEBUG && debugflag)
@@ -582,31 +590,51 @@ void dispatcher(void)
     }
 
     // is Current higher than all other processes?
-    else if (Current->priority < ReadyList->priority && Current->status == READY) {
-        // do nothing
+    else if (Current->priority < ReadyList->priority) {
+
+        if (Current->status == QUIT || Current->status == BLOCKED) {
+
+            if (DEBUG && debugflag && Current->status == QUIT)
+                USLOSS_Console("%s handing off to %s because %s is quitting\n", Current->name,ReadyList->name, Current->name);
+            if (DEBUG && debugflag && Current->status == BLOCKED) {
+                USLOSS_Console("%s handing off to %s because %s is blocked\n", Current->name,ReadyList->name, Current->name);
+            }
+
+            oldProcess = Current;
+            Current = ReadyList;
+            Current->status = RUNNING;
+            ReadyList = ReadyList->nextProcPtr;
+
+            p1_switch(oldProcess->pid, Current->pid);
+            enableInterrupts();
+            USLOSS_ContextSwitch(&oldProcess->state, &Current->state);
+        }
+        else {
+            // do nothing, let the process continue to run because it is higher than
+            // everyone else
+        }
+
     }
 
-    // check if time slice has been reached
-    else if (0 && Current->priority == ReadyList->priority) {
-        // procPtr temp = ReadyList;
-        // while ()
-    }
-    //this one should always be true???
-    else if (Current->pid != ReadyList->pid) {
-        if (DEBUG && debugflag && Current->priority < ReadyList->priority)
-            USLOSS_Console("%s handing off to %s because %s is quitting\n", Current->name,ReadyList->name, Current->name);
+    // Current is at the same priority as the next highest process
+    else {
+        // check if time slice has been reached and Current still needs to run
+        if (0 && Current->status != QUIT) {
+            if (DEBUG && debugflag)
+                USLOSS_Console("%s handing off to %s because %s is time-sliced\n", Current->name,ReadyList->name, Current->name);
 
-        oldProcess = Current;
-        Current = ReadyList;
-        ReadyList = ReadyList->nextProcPtr;
+            oldProcess = Current;
+            Current->status = READY;
 
-        p1_switch(oldProcess->pid, Current->pid);
-        enableInterrupts();
-        USLOSS_ContextSwitch(&oldProcess->state, &Current->state);
-    } else if (Current->status == BLOCKED) {
+            Current = ReadyList;
+            Current->status = RUNNING;
+            
+            ReadyList = ReadyList->nextProcPtr;
 
-    } else if (Current->status == QUIT) {
-
+            p1_switch(oldProcess->pid, Current->pid);
+            enableInterrupts();
+            USLOSS_ContextSwitch(&oldProcess->state, &Current->state);
+        }
     }
 
 } /* dispatcher */
@@ -629,7 +657,7 @@ void  dumpProcesses(void) {
     }
 }
 
-char * statusMatcher(int status){
+char* statusMatcher(int status){
     switch(status){
         case 0:
             return "UNUSED";
@@ -639,8 +667,10 @@ char * statusMatcher(int status){
             return "BLOCKED";
         case 3:
             return "QUIT";
+        case 4:
+            return "RUNNING";
         default:
-            return "BLOCKED_BY_BLOCKME";
+            return "UNKNOWN";
     }
 }
 
