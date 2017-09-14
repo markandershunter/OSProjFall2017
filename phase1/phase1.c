@@ -351,8 +351,44 @@ void launch()
    ------------------------------------------------------------------------ */
 int join(int *status)
 {
-    return -1;  // -1 is not correct! Here to prevent warning.
+    procPtr childPtr = Current->childProcPtr;
+
+    // Check if the current parent process has any children
+    if(childPtr == NULL){
+        USLOSS_Console("join(): No child process exists");
+        return NO_CHILD_PROCESS;
+    }
+
+    while(childPtr != NULL){
+        // Check if the childProc has been joined yet
+        if(childPtr->joinStatus == INDEPENDENT){
+            // Check if the childProc has quit yet
+            if(childPtr->status == QUIT){
+                // Clean up process table entry
+                cleanTableEntry(childPtr);
+                return childPtr->pid;
+            }
+
+            // Otherwise wait for it to quit
+            else USLOSS_WaitInt();
+        }
+
+        // Otherwise check the next child
+        else childPtr = childPtr->nextSiblingPtr;
+    }
+
+    // All children have been joined already
+    if (DEBUG && debugflag)
+        USLOSS_Console("join(): All chidlren have been joined");
+
+    return NO_INDEPENDENT_CHILDREN;
 } /* join */
+
+// TODO
+void cleanTableEntry(procPtr tableEntry)
+{
+
+}
 
 
 /* ------------------------------------------------------------------------
