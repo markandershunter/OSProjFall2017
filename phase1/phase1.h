@@ -59,5 +59,6 @@ extern void  p1_switch(int old, int new);
 
 
 void enableInterrupts();
+void printReadyList();
 
 #endif /* _PHASE1_H */
