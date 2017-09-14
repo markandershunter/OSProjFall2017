@@ -18,7 +18,8 @@ struct procStruct {
    char           *stack;
    unsigned int    stackSize;
    int             status;        /* READY, BLOCKED, QUIT, etc. */
-
+   int             joinStatus;    /* JOINED, INDEPENDENT */
+   int             exitCode;
    /* other fields as needed... */
 };
 
@@ -67,9 +68,13 @@ void illegalHandler (int interruptType, void* arg);
 #define STARTFUNC_NULL -1
 #define NAME_NULL -1
 #define OUT_OF_MEMORY -1
+#define NO_CHILD_PROCESS -2
+#define NO_INDEPENDENT_CHILDREN -2
 
 #define UNUSED 0
 #define READY 1
 #define BLOCKED 2
 #define QUIT 3
 
+#define INDEPENDENT 0
+#define JOINED 1
