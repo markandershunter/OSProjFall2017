@@ -26,6 +26,7 @@ struct procStruct {
    /* other fields as needed... */
    int             startTime;       /* slice start time */
    int             exitTime;        /* time that a process quit */
+   int             parentPid;
 };
 
 struct psrBits {

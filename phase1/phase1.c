@@ -73,6 +73,7 @@ void startup(int argc, char *argv[])
         current.stackSize = 0;
         current.status = UNUSED;
         current.exitTime = 0;
+        current.parentPid = -2;
     }
 
     // Initialize the Ready list, etc.
@@ -172,7 +173,7 @@ int fork1(char *name, int (*startFunc)(char *), char *arg,
 
     // Is there room in the process table? What is the next PID?
     for (i = 0; i < MAXPROC; i++) {
-        if (ProcTable[(nextPid-1) % MAXPROC].status != UNUSED) nextPid++;
+        if (ProcTable[nextPid % MAXPROC].status != UNUSED) nextPid++;
         else break;
     }
     if (i == MAXPROC) {
@@ -215,7 +216,7 @@ int fork1(char *name, int (*startFunc)(char *), char *arg,
 
     // fill-in entry in process table
 
-    procSlot = nextPid - 1;
+    procSlot = nextPid % MAXPROC;
 
     strcpy(ProcTable[procSlot].name, name);         // set the process name
     ProcTable[procSlot].startFunc = startFunc;      // set the start function
@@ -250,6 +251,8 @@ int fork1(char *name, int (*startFunc)(char *), char *arg,
     // set pointers so that parent knows where its child is
     if (Current != NULL){
         ProcTable[procSlot].parentPtr = Current;
+        ProcTable[procSlot].parentPid = Current->pid;
+        USLOSS_Console("%d", ProcTable[procSlot].parentPid);
 
         if(Current->childProcPtr == NULL) {
             Current->childProcPtr = &ProcTable[procSlot];
@@ -610,7 +613,24 @@ void dispatcher(void)
 
 
 
+void  dumpProcesses(void) {
+    int i = 0;
+    procPtr p = NULL;
 
+    USLOSS_Console("PID\tParent\tPriority\tStatus\t\t# Kids\tCPUtime\tName\n");
+
+    for (i = 0; i < MAXPROC; i++) {
+        p = &ProcTable[i];
+
+        USLOSS_Console("%d\t%d\n", p->pid, p->parentPid);
+    }
+}
+
+
+
+int getpid() {
+    return Current->pid;
+}
 
 
 
