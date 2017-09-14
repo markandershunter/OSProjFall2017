@@ -19,6 +19,7 @@ struct procStruct {
    unsigned int    stackSize;
    int             status;        /* READY, BLOCKED, QUIT, etc. */
    int             joinStatus;    /* JOINED, INDEPENDENT */
+   int             exitCode;
    /* other fields as needed... */
 };
 

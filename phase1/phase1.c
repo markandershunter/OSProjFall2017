@@ -246,8 +246,11 @@ int fork1(char *name, int (*startFunc)(char *), char *arg,
 
     // set pointers so that parent knows where its child is
     if (Current != NULL){
+        if(Current->childProcPtr == NULL)
+            Current->childProcPtr = &ProcTable[procSlot];
+
         procPtr temp = Current->childProcPtr;
-        if (temp == NULL) Current->childProcPtr = &ProcTable[procSlot];
+
         while (temp->nextSiblingPtr != NULL) {
             temp = temp->nextSiblingPtr;
         }
@@ -355,9 +358,12 @@ int join(int *status)
 
     // Check if the current parent process has any children
     if(childPtr == NULL){
-        USLOSS_Console("join(): No child process exists");
-        return NO_CHILD_PROCESS;
+        USLOSS_Console("join(): No child process exists\n");
+        *status = NO_CHILD_PROCESS;
+        return -1;
     }
+
+    int childPid = childPtr->pid;
 
     while(childPtr != NULL){
         // Check if the childProc has been joined yet
@@ -365,8 +371,9 @@ int join(int *status)
             // Check if the childProc has quit yet
             if(childPtr->status == QUIT){
                 // Clean up process table entry
-                cleanTableEntry(childPtr);
-                return childPtr->pid;
+                free(childPtr->stack);
+                *status = -2;
+                return childPid;
             }
 
             // Otherwise wait for it to quit
@@ -379,16 +386,11 @@ int join(int *status)
 
     // All children have been joined already
     if (DEBUG && debugflag)
-        USLOSS_Console("join(): All chidlren have been joined");
+        USLOSS_Console("join(): All children have been joined\n");
 
-    return NO_INDEPENDENT_CHILDREN;
+    *status = NO_INDEPENDENT_CHILDREN;
+    return childPid;
 } /* join */
-
-// TODO
-void cleanTableEntry(procPtr tableEntry)
-{
-
-}
 
 
 /* ------------------------------------------------------------------------
@@ -402,6 +404,20 @@ void cleanTableEntry(procPtr tableEntry)
    ------------------------------------------------------------------------ */
 void quit(int status)
 {
+    // test if in kernel mode (1); halt if in user mode (0)
+    if (!(USLOSS_PsrGet() & USLOSS_PSR_CURRENT_MODE)) {
+        USLOSS_Console("quit(): Not in kernel mode. Halting...\n");
+        USLOSS_Halt(1);
+    }
+
+    if (Current->childProcPtr != NULL) {
+        USLOSS_Console("quit(): Current process has at least one child. Halting...\n");
+        USLOSS_Halt(1);
+    }
+
+
+    Current->status = QUIT;
+    Current->exitCode = status;
     p1_quit(Current->pid);
 } /* quit */
 
