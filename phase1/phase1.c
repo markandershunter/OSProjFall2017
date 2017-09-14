@@ -25,7 +25,7 @@ static void checkDeadlock();
 /* -------------------------- Globals ------------------------------------- */
 
 // Patrick's debugging global variable...
-int debugflag = 1;
+int debugflag = 0;
 
 // the process table
 procStruct ProcTable[MAXPROC];
@@ -403,8 +403,12 @@ int join(int *status)
 
     // no children who have quit yet, so block and call dispatcher
     else {
+        if (DEBUG && debugflag)
+            USLOSS_Console("join(): %s blocking on join...\n", Current->name);
+
         Current->status = BLOCKED;
         dispatcher();
+        
         if (DEBUG && debugflag)
             USLOSS_Console("join(): %s woken up\n", Current->name);
     }
@@ -522,6 +526,12 @@ void dispatcher(void)
 
     // check if a higher priority process has been added to the ReadyList
     else if (ReadyList->priority < Current->priority) {
+        if (DEBUG && debugflag)
+            USLOSS_Console("%s has a higher priority than %s, %s will now run\n", ReadyList->name, Current->name, ReadyList->name);
+
+        if (Current->status != QUIT) addToReadyList(Current); // add Current back to ReadyList
+        if (DEBUG && debugflag) printReadyList();
+
         oldProcess = Current;
         Current = ReadyList;
         ReadyList = ReadyList->nextProcPtr;
