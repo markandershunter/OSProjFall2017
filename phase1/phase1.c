@@ -72,6 +72,7 @@ void startup(int argc, char *argv[])
         current.stack = NULL;
         current.stackSize = 0;
         current.status = UNUSED;
+        current.exitTime = 0;
     }
 
     // Initialize the Ready list, etc.
@@ -365,22 +366,44 @@ int join(int *status)
     procPtr earliest = NULL;
 
     int earliestExitTime = 0;
-    ///////////
+    int i = USLOSS_DeviceInput(USLOSS_CLOCK_DEV, 0, &earliestExitTime);
+    i++;
+
+
+
+    if (DEBUG && debugflag) {
+        USLOSS_Console("join(): %s joining with children...\n", Current->name);
+        USLOSS_Console("join(): Current time: %d\n", earliestExitTime);
+    }
+
+
 
     // Check if the current parent process has any children
-    if(childPtr == NULL){
+    if (childPtr == NULL) {
         USLOSS_Console("join(): No child processes exist\n");
         return NO_CHILD_PROCESSES;
     }
 
-    while(childPtr != NULL){
+    while (childPtr != NULL) {
+        if (DEBUG && debugflag) {
+            USLOSS_Console("join(): %s exit time is %d\n", childPtr->name, childPtr->exitTime);
+        }
+
         // Check if the childProc has quit and is also the earliest to quit so far
-        if(childPtr->status == QUIT && childPtr->exitTime < earliestExitTime){
+        if (childPtr->status == QUIT && childPtr->exitTime < earliestExitTime) {
+            if (DEBUG && debugflag) {
+                USLOSS_Console("join(): %s found child %s has quit\n", Current->name, childPtr->name);
+            }
+
             earliest = childPtr;
             earliestExitTime = childPtr->exitTime;
         }
 
         childPtr = childPtr->nextSiblingPtr;
+
+        if (DEBUG && debugflag) {
+            USLOSS_Console("join(): checking next child...\n");
+        }
     }
 
 
@@ -389,9 +412,17 @@ int join(int *status)
         *status = earliest->exitCode;
         earliest->status = UNUSED;
 
+        if (DEBUG && debugflag) {
+            USLOSS_Console("join(): reading quit info from %s\n", earliest->name);
+        }
+
         if (earliest->prevSiblingPtr == NULL) {
+            if (DEBUG && debugflag) {
+                USLOSS_Console("join(): %s was the first child in the list\n", earliest->name);
+            }
+
             Current->childProcPtr = earliest->nextSiblingPtr;
-            earliest->nextSiblingPtr->prevSiblingPtr = NULL;
+            if (earliest->nextSiblingPtr != NULL) earliest->nextSiblingPtr->prevSiblingPtr = NULL;
         }
         else {
             earliest->prevSiblingPtr->nextSiblingPtr = earliest->nextSiblingPtr;
@@ -467,7 +498,9 @@ void quit(int status)
     free(Current->stack);
     Current->status = QUIT;
     Current->exitCode = status;
-    // Current->exitTime = ___;
+    
+    int i = USLOSS_DeviceInput(USLOSS_CLOCK_DEV, USLOSS_CLOCK_UNITS, &(Current->exitTime));
+    i++;
 
     p1_quit(Current->pid);
 
@@ -530,7 +563,7 @@ void dispatcher(void)
             USLOSS_Console("%s has a higher priority than %s, %s will now run\n", ReadyList->name, Current->name, ReadyList->name);
 
         if (Current->status != QUIT) addToReadyList(Current); // add Current back to ReadyList
-        if (DEBUG && debugflag) printReadyList();
+        else if (DEBUG && debugflag) printReadyList();
 
         oldProcess = Current;
         Current = ReadyList;
@@ -556,6 +589,9 @@ void dispatcher(void)
     }
     //this one should always be true???
     else if (Current->pid != ReadyList->pid) {
+        if (DEBUG && debugflag && Current->priority < ReadyList->priority)
+            USLOSS_Console("%s handing off to %s because %s is quitting\n", Current->name,ReadyList->name, Current->name);
+
         oldProcess = Current;
         Current = ReadyList;
         ReadyList = ReadyList->nextProcPtr;
