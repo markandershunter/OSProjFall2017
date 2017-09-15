@@ -58,20 +58,8 @@ void startup(int argc, char *argv[])
     if (DEBUG && debugflag)
         USLOSS_Console("startup(): initializing process table, ProcTable[]\n");
     for (i = 0; i < MAXPROC; i++) {
-        ProcTable[i].nextProcPtr = NULL;
-        ProcTable[i].childProcPtr = NULL;
-        ProcTable[i].prevSiblingPtr = NULL;
-        ProcTable[i].nextSiblingPtr = NULL;
-        ProcTable[i].parentPtr = NULL;
-        ProcTable[i].pid = -1;               /* process id */
-        ProcTable[i].priority = MINPRIORITY;
-        ProcTable[i].startFunc = NULL;   /* function where process begins -- launch */
         ProcTable[i].stack = NULL;
-        ProcTable[i].stackSize = 0;
-        ProcTable[i].status = UNUSED;
-        ProcTable[i].exitTime = 0;
-        ProcTable[i].parentPid = -2;
-        ProcTable[i].childCount = 0;
+        cleanProcess(&ProcTable[i]);
     }
 
     // Initialize the Ready list, etc.
@@ -157,7 +145,9 @@ int fork1(char *name, int (*startFunc)(char *), char *arg,
 
     // test if in kernel mode (1); halt if in user mode (0)
     if (!(USLOSS_PsrGet() & USLOSS_PSR_CURRENT_MODE)) {
-        USLOSS_Console("fork1(): Not in kernel mode. Halting...\n");
+        if (Current != NULL) USLOSS_Console("fork1(): called while in user mode, by process %d. Halting...\n", Current->pid);
+        else USLOSS_Console("fork1(): called while in user mode. Halting...\n");
+
         USLOSS_Halt(1);
     }
 
@@ -274,14 +264,18 @@ int fork1(char *name, int (*startFunc)(char *), char *arg,
 
     ProcTable[procSlot].priority = priority;        // set priority
 
+    ProcTable[procSlot].totalExecutionTime = 0;
+    ProcTable[procSlot].lastReadTime = 0;
+    ProcTable[procSlot].startTimeSlice = -1;
+    ProcTable[procSlot].exitTimeSlice = -1;
+
+    ProcTable[procSlot].stackSize = stacksize;      // set stackSize
+
     ProcTable[procSlot].stack = malloc(stacksize);  // set stack
     if (ProcTable[procSlot].stack == NULL) {
         USLOSS_Console("fork1(): Out of memory for stack.\n");
         return OUT_OF_MEMORY;
     }
-
-
-    ProcTable[procSlot].stackSize = stacksize;      // set stackSize
 
     ProcTable[procSlot].status = READY;             // set READY status
 
@@ -367,7 +361,13 @@ int join(int *status)
 
     int earliestExitTime = 0;
     int i = USLOSS_DeviceInput(USLOSS_CLOCK_DEV, 0, &earliestExitTime);
-    i++;
+
+
+    // test if in kernel mode (1); halt if in user mode (0)
+    if (!(USLOSS_PsrGet() & USLOSS_PSR_CURRENT_MODE)) {
+        USLOSS_Console("join(): called while in user mode, by process %d. Halting...\n", Current->pid);
+        USLOSS_Halt(1);
+    }
 
 
 
@@ -386,17 +386,17 @@ int join(int *status)
 
     while (childPtr != NULL) {
         if (DEBUG && debugflag) {
-            USLOSS_Console("join(): %s exit time is %d\n", childPtr->name, childPtr->exitTime);
+            USLOSS_Console("join(): %s exit time is %d\n", childPtr->name, childPtr->exitTimeSlice);
         }
 
         // Check if the childProc has quit and is also the earliest to quit so far
-        if (childPtr->status == QUIT && childPtr->exitTime < earliestExitTime) {
+        if (childPtr->status == QUIT && childPtr->exitTimeSlice < earliestExitTime) {
             if (DEBUG && debugflag) {
                 USLOSS_Console("join(): %s found child %s has quit\n", Current->name, childPtr->name);
             }
 
             earliest = childPtr;
-            earliestExitTime = childPtr->exitTime;
+            earliestExitTime = childPtr->exitTimeSlice;
         }
 
         childPtr = childPtr->nextSiblingPtr;
@@ -410,7 +410,7 @@ int join(int *status)
     // remove process from sibling list and set up return values
     if (earliest != NULL) {
         *status = earliest->exitCode;
-        earliest->status = UNUSED;
+        i = earliest->pid;
 
         if (DEBUG && debugflag) {
             USLOSS_Console("join(): reading quit info from %s\n", earliest->name);
@@ -429,7 +429,9 @@ int join(int *status)
             earliest->nextSiblingPtr->prevSiblingPtr = earliest->prevSiblingPtr;
         }
 
-        return earliest->pid;
+        cleanProcess(earliest);
+
+        return i;
     }
 
     // no children who have quit yet, so block and call dispatcher
@@ -438,6 +440,8 @@ int join(int *status)
             USLOSS_Console("join(): %s blocking on join...\n", Current->name);
 
         Current->status = BLOCKED;
+        readtime();
+
         dispatcher();
 
         if (DEBUG && debugflag)
@@ -446,7 +450,6 @@ int join(int *status)
 
     // remove child who has just quit from list of children
     *status = Current->childQuitPtr->exitCode;
-    Current->childQuitPtr->status = UNUSED;
 
     if (DEBUG && debugflag)
         USLOSS_Console("join(): exit code saved and status set to UNUSED\n");
@@ -457,6 +460,7 @@ int join(int *status)
     if (Current->childQuitPtr->prevSiblingPtr == NULL) {
         if (DEBUG && debugflag)
             USLOSS_Console("join(): quit child had no previous siblings\n");
+
         Current->childProcPtr = Current->childQuitPtr->nextSiblingPtr;
 
         if (Current->childProcPtr != NULL) Current->childProcPtr->prevSiblingPtr = NULL;
@@ -466,7 +470,11 @@ int join(int *status)
         Current->childQuitPtr->nextSiblingPtr->prevSiblingPtr = Current->childQuitPtr->prevSiblingPtr;
     }
 
-    return Current->childQuitPtr->pid;
+    i = Current->childQuitPtr->pid;
+
+    cleanProcess(Current->childQuitPtr);
+
+    return i;
 } /* join */
 
 
@@ -483,12 +491,12 @@ void quit(int status)
 {
     // test if in kernel mode (1); halt if in user mode (0)
     if (!(USLOSS_PsrGet() & USLOSS_PSR_CURRENT_MODE)) {
-        USLOSS_Console("quit(): Not in kernel mode. Halting...\n");
+        USLOSS_Console("quit(): called while in user mode, by process %d. Halting...\n", Current->pid);
         USLOSS_Halt(1);
     }
 
     if (Current->childProcPtr != NULL) {
-        USLOSS_Console("quit(): Current process has at least one child. Halting...\n");
+        USLOSS_Console("quit(): process %d, '%s', has active children. Halting...\n", Current->pid, Current->name);
         USLOSS_Halt(1);
     }
 
@@ -499,8 +507,11 @@ void quit(int status)
     Current->status = QUIT;
     Current->exitCode = status;
 
-    int i = USLOSS_DeviceInput(USLOSS_CLOCK_DEV, USLOSS_CLOCK_UNITS, &(Current->exitTime));
+    int i = USLOSS_DeviceInput(USLOSS_CLOCK_DEV, 0, &(Current->exitTimeSlice));
     i++;
+
+    Current->totalExecutionTime = Current->totalExecutionTime + 
+        (Current->exitTimeSlice - Current->lastReadTime);
 
     p1_quit(Current->pid);
 
@@ -533,7 +544,9 @@ void dispatcher(void)
 {
     // test if in kernel mode (1); halt if in user mode (0)
     if (!(USLOSS_PsrGet() & USLOSS_PSR_CURRENT_MODE)) {
-        USLOSS_Console("dispatcher(): Not in kernel mode. Halting...\n");
+        if (Current != NULL) USLOSS_Console("dispatcher(): called while in user mode, by process %d. Halting...\n", Current->pid);
+        else USLOSS_Console("dispatcher(): called while in user mode. Halting...\n");
+
         USLOSS_Halt(1);
     }
 
@@ -557,8 +570,11 @@ void dispatcher(void)
         p1_switch('\0', Current->pid);
         enableInterrupts();
         USLOSS_ContextSwitch(NULL, &Current->state);
-        int i = USLOSS_DeviceInput(USLOSS_CLOCK_DEV, USLOSS_CLOCK_UNITS, &(Current->startTime));
+        
+        int i = USLOSS_DeviceInput(USLOSS_CLOCK_DEV, 0, &(Current->startTimeSlice));
         i++;
+
+        Current->lastReadTime = Current->startTimeSlice;
     }
 
     // check if a higher priority process has been added to the ReadyList
@@ -584,9 +600,14 @@ void dispatcher(void)
         p1_switch(oldProcess->pid, Current->pid);
         enableInterrupts();
         USLOSS_ContextSwitch(&oldProcess->state, &Current->state);
-        int i = USLOSS_DeviceInput(USLOSS_CLOCK_DEV, USLOSS_CLOCK_UNITS, &(Current->startTime));
+        
+        int i = USLOSS_DeviceInput(USLOSS_CLOCK_DEV, 0, &(Current->startTimeSlice));
         i++;
-        USLOSS_Console("dispatcher(): start time is %d", Current->startTime);
+
+        Current->lastReadTime = Current->startTimeSlice;
+
+        if (DEBUG && debugflag)
+            USLOSS_Console("dispatcher(): start time is %d", Current->startTimeSlice);
     }
 
     // is Current higher than all other processes?
@@ -647,17 +668,38 @@ void  dumpProcesses(void) {
     procPtr p = NULL;
     char status[19];
 
+    // test if in kernel mode (1); halt if in user mode (0)
+    if (!(USLOSS_PsrGet() & USLOSS_PSR_CURRENT_MODE)) {
+        USLOSS_Console("dumpProcesses(): called while in user mode, by process %d. Halting...\n", Current->pid);
+        USLOSS_Halt(1);
+    }
+
+    readtime();
+
+
     USLOSS_Console("%5s%11s%10s%15s%13s%10s%12s\n", "PID", "ParentPID", "Priority",  "Status", "Child Count", "CPU Time", "Name");
 
     for (i = 0; i < MAXPROC; i++) {
         p = &ProcTable[i];
         strcpy(status, statusMatcher(p->status));
         USLOSS_Console("%5d%11d%10d%15s%13d%10d%12s\n", p->pid, p->parentPid, p->priority,
-            status, p->childCount, readtime(), p->name);
+            status, p->childCount, p->totalExecutionTime, p->name);
     }
 }
 
-char* statusMatcher(int status){
+
+
+
+
+int zap(int pid) {
+    return 0;
+}
+
+
+
+
+
+char* statusMatcher(int status) {
     switch(status){
         case 0:
             return "UNUSED";
@@ -673,6 +715,9 @@ char* statusMatcher(int status){
             return "UNKNOWN";
     }
 }
+
+
+
 
 
 
@@ -817,11 +862,53 @@ void printReadyList() {
     }
 }
 
+
+
+
+
 /*
 *   Return the CPU time (in ms) used by the current process
 */
 int readtime(){
-    return Current->startTime - Current->exitTime;
+    int temp = Current->lastReadTime;
+
+    int i = USLOSS_DeviceInput(USLOSS_CLOCK_DEV, 0, &(Current->lastReadTime));
+    i++;
+
+    if (DEBUG && debugflag) {
+        USLOSS_Console("readtime(): current total: %d\n", Current->totalExecutionTime);
+        USLOSS_Console("readtime(): last read time: %d\n", temp);
+        USLOSS_Console("readtime(): time right now: %d\n", Current->lastReadTime);
+    }
+
+    Current->totalExecutionTime = Current->totalExecutionTime +
+        (Current->lastReadTime - temp);
+
+    // return 6;
+    return Current->totalExecutionTime;
+}
+
+
+
+
+void cleanProcess(procPtr p) {
+    p->nextProcPtr = NULL;
+    p->childProcPtr = NULL;
+    p->prevSiblingPtr = NULL;
+    p->nextSiblingPtr = NULL;
+    p->parentPtr = NULL;
+    p->pid = -1;               /* process id */
+    p->priority = -1;
+    p->startFunc = NULL;   /* function where process begins -- launch */
+    p->stackSize = 0;
+    p->status = UNUSED;
+    p->startTimeSlice = -1;
+    p->exitTimeSlice = -1;
+    p->lastReadTime = 0;
+    p->totalExecutionTime = 0;
+    p->parentPid = -1;
+    p->childCount = 0;
+    strcpy(p->name, "");
 }
 
 

@@ -24,8 +24,10 @@ struct procStruct {
    int             exitCode;
 
    /* other fields as needed... */
-   int             startTime;       /* slice start time */
-   int             exitTime;        /* time that a process quit */
+   int             startTimeSlice;       /* slice start time */
+   int             exitTimeSlice;        /* time that a process quit */
+   int             lastReadTime;         /* the last time that the time was read for a process */
+   int             totalExecutionTime;
    int             parentPid;
    int             childCount;
 };
@@ -47,6 +49,7 @@ union psrValues {
 
 
 void  addToReadyList(procPtr proc);
+void cleanProcess(procPtr);
 
 void clockHandler (int interruptType, void* arg);
 void alarmHandler (int interruptType, void* arg);
