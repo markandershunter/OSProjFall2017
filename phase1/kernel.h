@@ -12,6 +12,7 @@ struct procStruct {
    procPtr         nextSiblingPtr;
    procPtr         parentPtr;
    procPtr         zappedPtr;
+   procPtr         zappedSiblingPtr;
    procPtr         childQuitPtr;      /* the child who quit after join */
    char            name[MAXNAME];     /* process's name */
    char            startArg[MAXARG];  /* args passed to process */
@@ -50,8 +51,10 @@ union psrValues {
 
 
 
-void  addToReadyList(procPtr proc);
+void addToReadyList(procPtr);
 void cleanProcess(procPtr);
+void addToZappedList(procPtr);
+void printZappedList(procPtr);
 
 void clockHandler (int interruptType, void* arg);
 void alarmHandler (int interruptType, void* arg);
