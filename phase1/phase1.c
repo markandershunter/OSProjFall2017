@@ -166,7 +166,8 @@ int fork1(char *name, int (*startFunc)(char *), char *arg,
         else break;
     }
     if (i == MAXPROC) {
-        USLOSS_Console("fork1(): Processtable full.\n");
+        if (DEBUG && debugflag)
+            USLOSS_Console("fork1(): Process table full.\n");
         return PROCESS_TABLE_FULL;
     }
 
@@ -384,7 +385,8 @@ int join(int *status)
 
     // Check if the current parent process has any children
     if (childPtr == NULL) {
-        USLOSS_Console("join(): No child processes exist\n");
+        if (DEBUG && debugflag)
+            USLOSS_Console("join(): No child processes exist\n");
         return NO_CHILD_PROCESSES;
     }
 
@@ -738,18 +740,18 @@ int zap(int pid) {
 
     // test if in kernel mode (1); halt if in user mode (0)
     if (!(USLOSS_PsrGet() & USLOSS_PSR_CURRENT_MODE)) {
-        USLOSS_Console("zap(): called while in user mode, by process %d. Halting...\n", Current->pid);
+        USLOSS_Console("zap(): called while in user mode, by process %d.  Halting...\n", Current->pid);
         USLOSS_Halt(1);
     }
 
     // is the process trying to zap itself?
     if (pid == getpid()) {
-        USLOSS_Console("zap(): process %d trying to zap itself. Halting...\n", Current->pid);
+        USLOSS_Console("zap(): process %d tried to zap itself.  Halting...\n", Current->pid);
         USLOSS_Halt(1);
     }
 
     if (p->status == UNUSED) {
-        USLOSS_Console("zap(): process %d trying to zap a non-existent process. Halting...\n", Current->pid);
+        USLOSS_Console("zap(): process %d tried to zap a non-existent process.  Halting...\n", Current->pid);
         USLOSS_Halt(1);
     }
 
