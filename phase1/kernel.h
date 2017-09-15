@@ -87,12 +87,18 @@ void illegalHandler (int interruptType, void* arg);
 
 #define UNUSED      0
 #define READY       1
-#define BLOCKED     2
 #define QUIT        3
 #define RUNNING     4
+#define JOIN_BLOCK    5
+#define ZAP_BLOCK     6
 
-#define ZAPPED_WHILE_JOINING    -1
-#define ZAPPED_WHILE_ZAPPING    -1
+#define ZAPPED_WHILE_JOINING        -1
+#define ZAPPED_WHILE_ZAPPING        -1
+#define ZAPPED_WHILE_BLOCKME        -1
+#define ZAPPED_WHILE_UNBLOCKING     -1
 
-#define ZAP_OK      0
-#define ZAP_FAIL    -1
+#define ZAP_OK              0
+#define BLOCKME_OK          0
+#define UNBLOCK_PROC_OK     0
+
+#define UNBLOCK_PROC_ERROR      -2
