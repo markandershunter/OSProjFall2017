@@ -89,6 +89,7 @@ void illegalHandler (int interruptType, void* arg);
 #define RUNNING     4
 
 #define ZAPPED_WHILE_JOINING    -1
+#define ZAPPED_WHILE_ZAPPING    -1
 
 #define ZAP_OK      0
 #define ZAP_FAIL    -1
