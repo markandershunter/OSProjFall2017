@@ -154,7 +154,8 @@ int fork1(char *name, int (*startFunc)(char *), char *arg,
 
     // Return if stack size is too small
     if (stacksize < USLOSS_MIN_STACK) {
-        USLOSS_Console("fork1(): Stack size too small.\n");
+        if (DEBUG && debugflag)
+            USLOSS_Console("fork1(): Stack size too small.\n");
         return STACK_SIZE_TOO_SMALL;
     }
 
