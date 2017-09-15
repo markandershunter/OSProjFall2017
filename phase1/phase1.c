@@ -494,6 +494,8 @@ int join(int *status)
    ------------------------------------------------------------------------ */
 void quit(int status)
 {
+    procPtr p = NULL;
+
     // test if in kernel mode (1); halt if in user mode (0)
     if (!(USLOSS_PsrGet() & USLOSS_PSR_CURRENT_MODE)) {
         USLOSS_Console("quit(): called while in user mode, by process %d. Halting...\n", Current->pid);
@@ -524,6 +526,13 @@ void quit(int status)
     if (isZapped()) {
         Current->zappedPtr->status = READY;
         addToReadyList(Current->zappedPtr);
+
+        p = Current->zappedPtr->zappedSiblingPtr;
+        while (p != NULL) {
+            p->status = READY;
+            addToReadyList(p);
+            p = p->zappedSiblingPtr;
+        }
     }
 
     if (Current->parentPtr != NULL) {
@@ -651,8 +660,28 @@ void dispatcher(void)
 
     // Current is at the same priority as the next highest process
     else {
+
+        // is the current process quitting?
+        if (Current->status == QUIT) {
+
+        }
+
+        // if the current process is blocked, run the next in line
+        else if (Current->status == BLOCKED) {
+            oldProcess = Current;
+
+            Current = ReadyList;
+            Current->status = RUNNING;
+
+            ReadyList = ReadyList->nextProcPtr;
+
+            p1_switch(oldProcess->pid, Current->pid);
+            enableInterrupts();
+            USLOSS_ContextSwitch(&oldProcess->state, &Current->state);
+        }
+
         // check if time slice has been reached and Current still needs to run
-        if (0 && Current->status != QUIT) {
+        else if (0) {
             if (DEBUG && debugflag)
                 USLOSS_Console("%s handing off to %s because %s is time-sliced\n", Current->name,ReadyList->name, Current->name);
 
@@ -727,7 +756,7 @@ int zap(int pid) {
     if (p->status == QUIT) return ZAP_OK;
 
     p->zap = 1;
-    p->zappedPtr = Current;
+    addToZappedList(p);
 
     // wait for zapped process to call quit
     Current->status = BLOCKED;
@@ -737,6 +766,8 @@ int zap(int pid) {
     if (isZapped()) return ZAPPED_WHILE_ZAPPING;
     else return ZAP_OK;
 }
+
+
 
 
 int isZapped() {
@@ -902,12 +933,48 @@ void addToReadyList(procPtr proc) {
 
 
 
+
+void addToZappedList(procPtr p) {
+    procPtr temp = p->zappedPtr;
+
+    if (p->zappedPtr == NULL) {
+        p->zappedPtr = Current;
+        return;
+    }
+
+    // add to end of zapped list
+    while (temp->zappedSiblingPtr != NULL) {
+        temp = temp->zappedSiblingPtr;
+    }
+
+    temp->zappedSiblingPtr = Current;
+
+    if (DEBUG && debugflag) {
+        printZappedList(p);
+    }
+}
+
+
+
+
 void printReadyList() {
     procPtr curr = ReadyList;
     USLOSS_Console("Printing contents of ready list:\n");
     while (curr != NULL) {
         USLOSS_Console("\t%s in ready list\n", curr->name);
         curr = curr->nextProcPtr;
+    }
+}
+
+
+
+
+void printZappedList(procPtr p) {
+    procPtr temp = p->zappedPtr;
+
+    while (temp != NULL) {
+        USLOSS_Console("\tpid %d in %s's zapped list\n", temp->pid, p->name);
+        temp = temp->zappedSiblingPtr;
     }
 }
 
@@ -947,6 +1014,8 @@ void cleanProcess(procPtr p) {
     p->nextSiblingPtr = NULL;
     p->parentPtr = NULL;
     p->zappedPtr = NULL;
+    p->zappedSiblingPtr = NULL;
+    p->childQuitPtr = NULL;
     p->pid = -1;               /* process id */
     p->priority = -1;
     p->startFunc = NULL;   /* function where process begins -- launch */
