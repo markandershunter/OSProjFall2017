@@ -254,6 +254,9 @@ int fork1(char *name, int (*startFunc)(char *), char *arg,
         }
         Current->childCount++;
     }
+    else {
+        ProcTable[procSlot].parentPid = -2;
+    }
 
     if (DEBUG && debugflag)
         USLOSS_Console("fork1(): 4\n");
@@ -474,7 +477,8 @@ int join(int *status)
 
     cleanProcess(Current->childQuitPtr);
 
-    return i;
+    if (isZapped()) return ZAPPED_WHILE_JOINING;
+    else return i;
 } /* join */
 
 
@@ -798,25 +802,25 @@ int sentinel (char *dummy)
 /* check to determine if deadlock has occurred... */
 static void checkDeadlock()
 {
-    int i = 2;
+    int i = 0;
+    int numProc = 0;
 
-    if (ProcTable[0].status != UNUSED && ProcTable[0].status != QUIT) {
-        USLOSS_Console("Error: Some processes still running.\n");
-        USLOSS_Halt(1);
-    }
-
-    // skip process 1, sentinel
-
-    for (i = 2; i < MAXPROC; i++) {
+    for (i = 0; i < MAXPROC; i++) {
         if (ProcTable[i].status != UNUSED && ProcTable[i].status != QUIT) {
-            USLOSS_Console("%s\n", statusMatcher(ProcTable[i].status));
-            USLOSS_Console("Error: Some processes still running.\n");
-            USLOSS_Halt(1);
+            numProc++;
         }
     }
 
-    USLOSS_Console("All processes completed.\n");
-    USLOSS_Halt(0);
+    if (numProc != 1) {
+        USLOSS_Console("checkDeadlock(): numProc = %d. Only Sentinel should be left. Halting...\n", numProc);
+        USLOSS_Halt(1);
+    }
+    else {
+        USLOSS_Console("All processes completed.\n");
+        USLOSS_Halt(0);
+    }
+
+
 } /* checkDeadlock */
 
 
