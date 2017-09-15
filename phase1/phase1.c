@@ -175,7 +175,8 @@ int fork1(char *name, int (*startFunc)(char *), char *arg,
     // check priority
     if (priority > MINPRIORITY || priority < MAXPRIORITY) {
         if (priority != SENTINELPRIORITY || strcmp("sentinel", name) != 0) {
-            USLOSS_Console("fork1(): Priority out of range.\n");
+            if (DEBUG && debugflag)
+                USLOSS_Console("fork1(): Priority out of range.\n");
             return PRIORITY_OUT_OF_RANGE;
         }
     }
@@ -446,7 +447,7 @@ int join(int *status)
         if (DEBUG && debugflag)
             USLOSS_Console("join(): %s blocking on join...\n", Current->name);
 
-        Current->status = BLOCKED;
+        Current->status = JOIN_BLOCK;
         readtime();
 
         dispatcher();
@@ -505,7 +506,7 @@ void quit(int status)
         USLOSS_Halt(1);
     }
 
-    if (Current->childProcPtr != NULL) {
+    if (Current->childCount != 0) {
         USLOSS_Console("quit(): process %d, '%s', has active children. Halting...\n", Current->pid, Current->name);
         USLOSS_Halt(1);
     }
@@ -541,12 +542,13 @@ void quit(int status)
     if (Current->parentPtr != NULL) {
         Current->parentPtr->childCount = Current->parentPtr->childCount - 1;
 
-        if (Current->parentPtr->status == BLOCKED) {
+        if (Current->parentPtr->status == JOIN_BLOCK) {
             Current->parentPtr->status = READY;
             addToReadyList(Current->parentPtr);
 
             Current->parentPtr->childQuitPtr = Current;
         }
+
     }
     
 
@@ -637,11 +639,12 @@ void dispatcher(void)
     // is Current higher than all other processes?
     else if (Current->priority < ReadyList->priority) {
 
-        if (Current->status == QUIT || Current->status == BLOCKED) {
+        if (Current->status == QUIT || Current->status == JOIN_BLOCK ||
+            Current->status == ZAP_BLOCK || Current->status > 10) {
 
             if (DEBUG && debugflag && Current->status == QUIT)
                 USLOSS_Console("%s handing off to %s because %s is quitting\n", Current->name,ReadyList->name, Current->name);
-            if (DEBUG && debugflag && Current->status == BLOCKED) {
+            if (DEBUG && debugflag && (Current->status == JOIN_BLOCK || Current->status == ZAP_BLOCK)) {
                 USLOSS_Console("%s handing off to %s because %s is blocked\n", Current->name,ReadyList->name, Current->name);
             }
 
@@ -670,7 +673,7 @@ void dispatcher(void)
         }
 
         // if the current process is blocked, run the next in line
-        else if (Current->status == BLOCKED) {
+        else if (Current->status == JOIN_BLOCK || Current->status == ZAP_BLOCK) {
             oldProcess = Current;
 
             Current = ReadyList;
@@ -725,7 +728,7 @@ void  dumpProcesses(void) {
 
     for (i = 0; i < MAXPROC; i++) {
         p = &ProcTable[i];
-        strcpy(status, statusMatcher(p->status));
+        statusMatcher(p->status, status);
         USLOSS_Console("%5d%11d%10d%15s%13d%10d%12s\n", p->pid, p->parentPid, p->priority,
             status, p->childCount, p->totalExecutionTime, p->name);
     }
@@ -762,7 +765,7 @@ int zap(int pid) {
     addToZappedList(p);
 
     // wait for zapped process to call quit
-    Current->status = BLOCKED;
+    Current->status = ZAP_BLOCK;
     readtime();
     dispatcher();
 
@@ -781,20 +784,86 @@ int isZapped() {
 
 
 
-char* statusMatcher(int status) {
+
+int blockMe(int block_status){
+    // test if in kernel mode (1); halt if in user mode (0)
+    if (!(USLOSS_PsrGet() & USLOSS_PSR_CURRENT_MODE)) {
+        USLOSS_Console("zap(): called while in user mode, by process %d.  Halting...\n", Current->pid);
+        USLOSS_Halt(1);
+    }
+
+    if (block_status <= 10) {
+        USLOSS_Console("blockMe(): blockStatus %d must be greater than or equal to 10\n", block_status);
+        USLOSS_Halt(1);
+    }
+
+
+
+    Current->status = block_status;
+    readtime();
+    dispatcher();
+
+    if (isZapped()) return ZAPPED_WHILE_BLOCKME;
+    else return BLOCKME_OK;
+}
+
+
+
+
+int unblockProc(int pid) {
+    procPtr p = &ProcTable[pid % MAXPROC];
+
+    if (p->status <= 10) {
+        if (DEBUG && debugflag)
+            USLOSS_Console("unblockProc(): pid %d has status less than or equal to 10: %d\n", pid, p->status);
+        return UNBLOCK_PROC_ERROR;
+    }
+
+    if (p == Current) {
+        if (DEBUG && debugflag)
+            USLOSS_Console("unblockProc(): pid %d is the current process and cannot unblock itself\n", pid);
+        return UNBLOCK_PROC_ERROR;
+    }
+
+
+    // unblock the process
+    p->status = READY;
+    addToReadyList(p);
+    dispatcher();
+
+    if (isZapped()) return ZAPPED_WHILE_UNBLOCKING;
+    else return UNBLOCK_PROC_OK;
+}
+
+
+
+
+
+
+
+
+void statusMatcher(int status, char* str) {
+
     switch(status){
         case 0:
-            return "UNUSED";
+            strcpy(str, "UNUSED");
+            break;
         case 1:
-            return "READY";
-        case 2:
-            return "BLOCKED";
+            strcpy(str, "READY");
+            break;
         case 3:
-            return "QUIT";
+            strcpy(str, "QUIT");
+            break;
         case 4:
-            return "RUNNING";
+            strcpy(str, "RUNNING");
+            break;
+        case 5:
+            strcpy(str, "JOIN_BLOCK");
+            break;
+        case 6:
+            strcpy(str, "ZAP_BLOCK");
         default:
-            return "UNKNOWN";
+            sprintf(str, "%d", status);
     }
 }
 

@@ -58,7 +58,7 @@ extern void  p1_quit(int pid);
 extern void  p1_switch(int old, int new);
 
 
-char* statusMatcher(int);
+void statusMatcher(int, char*);
 void enableInterrupts();
 void printReadyList();
 
