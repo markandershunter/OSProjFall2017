@@ -137,6 +137,7 @@ int fork1(char *name, int (*startFunc)(char *), char *arg,
 {
     int procSlot = -1;
     int i = 0;
+    int pid = -1;
 
     if (DEBUG && debugflag)
         USLOSS_Console("fork1(): creating process %s\n", name);
@@ -170,6 +171,9 @@ int fork1(char *name, int (*startFunc)(char *), char *arg,
             USLOSS_Console("fork1(): Process table full.\n");
         return PROCESS_TABLE_FULL;
     }
+
+    pid = nextPid;
+    nextPid++;
 
 
     // check priority
@@ -207,7 +211,7 @@ int fork1(char *name, int (*startFunc)(char *), char *arg,
 
     // fill-in entry in process table
 
-    procSlot = nextPid % MAXPROC;
+    procSlot = pid % MAXPROC;
 
     strcpy(ProcTable[procSlot].name, name);         // set the process name
     ProcTable[procSlot].startFunc = startFunc;      // set the start function
@@ -266,7 +270,7 @@ int fork1(char *name, int (*startFunc)(char *), char *arg,
 
 
 
-    ProcTable[procSlot].pid = nextPid;              // set pid
+    ProcTable[procSlot].pid = pid;                  // set pid
 
     ProcTable[procSlot].priority = priority;        // set priority
 
@@ -315,7 +319,7 @@ int fork1(char *name, int (*startFunc)(char *), char *arg,
         dispatcher();
     }
 
-    return nextPid++;
+    return pid;
 } /* fork1 */
 
 /* ------------------------------------------------------------------------
@@ -514,9 +518,11 @@ void quit(int status)
     if (DEBUG && debugflag)
         USLOSS_Console("quit(): %s quitting...\n", Current->name);
 
+
     free(Current->stack);
     Current->status = QUIT;
     Current->exitCode = status;
+
 
     int i = USLOSS_DeviceInput(USLOSS_CLOCK_DEV, 0, &(Current->exitTimeSlice));
     i++;
@@ -622,11 +628,9 @@ void dispatcher(void)
 
         if (DEBUG && debugflag)
             USLOSS_Console("%s now running\n", Current->name);
-
         p1_switch(oldProcess->pid, Current->pid);
         enableInterrupts();
         USLOSS_ContextSwitch(&oldProcess->state, &Current->state);
-        
         int i = USLOSS_DeviceInput(USLOSS_CLOCK_DEV, 0, &(Current->startTimeSlice));
         i++;
 
@@ -862,6 +866,7 @@ void statusMatcher(int status, char* str) {
             break;
         case 6:
             strcpy(str, "ZAP_BLOCK");
+            break;
         default:
             sprintf(str, "%d", status);
     }
