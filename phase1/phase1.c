@@ -514,14 +514,14 @@ void quit(int status)
     if (DEBUG && debugflag)
         USLOSS_Console("quit(): %s quitting...\n", Current->name);
 
-    free(Current->stack);
+    // free(Current->stack);
     Current->status = QUIT;
     Current->exitCode = status;
 
     int i = USLOSS_DeviceInput(USLOSS_CLOCK_DEV, 0, &(Current->exitTimeSlice));
     i++;
 
-    Current->totalExecutionTime = Current->totalExecutionTime + 
+    Current->totalExecutionTime = Current->totalExecutionTime +
         (Current->exitTimeSlice - Current->lastReadTime);
 
     p1_quit(Current->pid);
@@ -550,7 +550,7 @@ void quit(int status)
         }
 
     }
-    
+
 
     dispatcher();
 } /* quit */
@@ -596,7 +596,7 @@ void dispatcher(void)
         p1_switch('\0', Current->pid);
         enableInterrupts();
         USLOSS_ContextSwitch(NULL, &Current->state);
-        
+
         int i = USLOSS_DeviceInput(USLOSS_CLOCK_DEV, 0, &(Current->startTimeSlice));
         i++;
 
@@ -626,7 +626,7 @@ void dispatcher(void)
         p1_switch(oldProcess->pid, Current->pid);
         enableInterrupts();
         USLOSS_ContextSwitch(&oldProcess->state, &Current->state);
-        
+
         int i = USLOSS_DeviceInput(USLOSS_CLOCK_DEV, 0, &(Current->startTimeSlice));
         i++;
 
@@ -696,7 +696,7 @@ void dispatcher(void)
 
             Current = ReadyList;
             Current->status = RUNNING;
-            
+
             ReadyList = ReadyList->nextProcPtr;
 
             p1_switch(oldProcess->pid, Current->pid);
@@ -753,7 +753,7 @@ int zap(int pid) {
         USLOSS_Halt(1);
     }
 
-    if (p->status == UNUSED) {
+    if (pid != p->pid || p->status == UNUSED) {
         USLOSS_Console("zap(): process %d tried to zap a non-existent process.  Halting...\n", Current->pid);
         USLOSS_Halt(1);
     }
