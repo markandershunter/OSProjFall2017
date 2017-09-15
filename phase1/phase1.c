@@ -758,7 +758,7 @@ int zap(int pid) {
     }
 
     if (pid != p->pid || p->status == UNUSED) {
-        USLOSS_Console("zap(): process %d tried to zap a non-existent process.  Halting...\n", Current->pid);
+        USLOSS_Console("zap(): process being zapped does not exist.  Halting...\n", Current->pid);
         USLOSS_Halt(1);
     }
 
