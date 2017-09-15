@@ -434,7 +434,8 @@ int join(int *status)
 
         cleanProcess(earliest);
 
-        return i;
+        if (isZapped()) return ZAPPED_WHILE_JOINING;
+        else return i;
     }
 
     // no children who have quit yet, so block and call dispatcher
@@ -733,7 +734,8 @@ int zap(int pid) {
     readtime();
     dispatcher();
 
-    return ZAP_OK;
+    if (isZapped()) return ZAPPED_WHILE_ZAPPING;
+    else return ZAP_OK;
 }
 
 
