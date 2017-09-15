@@ -515,6 +515,12 @@ void quit(int status)
 
     p1_quit(Current->pid);
 
+
+    if (isZapped()) {
+        Current->zappedPtr->status = READY;
+        addToReadyList(Current->zappedPtr);
+    }
+
     if (Current->parentPtr != NULL) {
         Current->parentPtr->childCount = Current->parentPtr->childCount - 1;
 
@@ -525,6 +531,7 @@ void quit(int status)
             Current->parentPtr->childQuitPtr = Current;
         }
     }
+    
 
     dispatcher();
 } /* quit */
@@ -692,7 +699,42 @@ void  dumpProcesses(void) {
 
 
 int zap(int pid) {
-    return 0;
+    procPtr p = &ProcTable[pid % MAXPROC];
+
+    // test if in kernel mode (1); halt if in user mode (0)
+    if (!(USLOSS_PsrGet() & USLOSS_PSR_CURRENT_MODE)) {
+        USLOSS_Console("zap(): called while in user mode, by process %d. Halting...\n", Current->pid);
+        USLOSS_Halt(1);
+    }
+
+    // is the process trying to zap itself?
+    if (pid == getpid()) {
+        USLOSS_Console("zap(): process %d trying to zap itself. Halting...\n", Current->pid);
+        USLOSS_Halt(1);
+    }
+
+    if (p->status == UNUSED) {
+        USLOSS_Console("zap(): process %d trying to zap a non-existent process. Halting...\n", Current->pid);
+        USLOSS_Halt(1);
+    }
+
+    // the process to be zapped has already quit
+    if (p->status == QUIT) return ZAP_OK;
+
+    p->zap = 1;
+    p->zappedPtr = Current;
+
+    // wait for zapped process to call quit
+    Current->status = BLOCKED;
+    readtime();
+    dispatcher();
+
+    return ZAP_OK;
+}
+
+
+int isZapped() {
+    return Current->zap;
 }
 
 
@@ -758,22 +800,23 @@ static void checkDeadlock()
 {
     int i = 2;
 
-    if (ProcTable[0].status != UNUSED) {
-        USLOSS_Console("All processes completed.\n");
-        USLOSS_Halt(0);
+    if (ProcTable[0].status != UNUSED && ProcTable[0].status != QUIT) {
+        USLOSS_Console("Error: Some processes still running.\n");
+        USLOSS_Halt(1);
     }
 
     // skip process 1, sentinel
 
     for (i = 2; i < MAXPROC; i++) {
-        if (ProcTable[i].status != UNUSED) {
-            USLOSS_Console("All processes completed.\n");
-            USLOSS_Halt(0);
+        if (ProcTable[i].status != UNUSED && ProcTable[i].status != QUIT) {
+            USLOSS_Console("%s\n", statusMatcher(ProcTable[i].status));
+            USLOSS_Console("Error: Some processes still running.\n");
+            USLOSS_Halt(1);
         }
     }
 
-    USLOSS_Console("Error: Some processes still running.\n");
-    USLOSS_Halt(1);
+    USLOSS_Console("All processes completed.\n");
+    USLOSS_Halt(0);
 } /* checkDeadlock */
 
 
@@ -897,6 +940,7 @@ void cleanProcess(procPtr p) {
     p->prevSiblingPtr = NULL;
     p->nextSiblingPtr = NULL;
     p->parentPtr = NULL;
+    p->zappedPtr = NULL;
     p->pid = -1;               /* process id */
     p->priority = -1;
     p->startFunc = NULL;   /* function where process begins -- launch */
@@ -908,6 +952,7 @@ void cleanProcess(procPtr p) {
     p->totalExecutionTime = 0;
     p->parentPid = -1;
     p->childCount = 0;
+    p->zap = 0;
     strcpy(p->name, "");
 }
 

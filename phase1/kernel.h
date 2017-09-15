@@ -11,6 +11,7 @@ struct procStruct {
    procPtr         prevSiblingPtr;
    procPtr         nextSiblingPtr;
    procPtr         parentPtr;
+   procPtr         zappedPtr;
    procPtr         childQuitPtr;      /* the child who quit after join */
    char            name[MAXNAME];     /* process's name */
    char            startArg[MAXARG];  /* args passed to process */
@@ -30,6 +31,7 @@ struct procStruct {
    int             totalExecutionTime;
    int             parentPid;
    int             childCount;
+   int             zap;                  /* has the process been zapped yet */
 };
 
 struct psrBits {
@@ -66,24 +68,25 @@ void illegalHandler (int interruptType, void* arg);
 
 
 /* Some useful constants.  Add more as needed... */
-#define NO_CURRENT_PROCESS NULL
-#define MINPRIORITY 5
-#define MAXPRIORITY 1
-#define SENTINELPID 1
-#define SENTINELPRIORITY (MINPRIORITY + 1)
+#define NO_CURRENT_PROCESS  NULL
+#define MINPRIORITY         5
+#define MAXPRIORITY         1
+#define SENTINELPID         1
+#define SENTINELPRIORITY    (MINPRIORITY + 1)
 
-#define STACK_SIZE_TOO_SMALL -2
-#define PROCESS_TABLE_FULL -1
-#define PRIORITY_OUT_OF_RANGE -1
-#define STARTFUNC_NULL -1
-#define NAME_NULL -1
-#define OUT_OF_MEMORY -1
-#define NO_CHILD_PROCESSES -2
+#define STACK_SIZE_TOO_SMALL    -2
+#define PROCESS_TABLE_FULL      -1
+#define PRIORITY_OUT_OF_RANGE   -1
+#define STARTFUNC_NULL          -1
+#define NAME_NULL               -1
+#define OUT_OF_MEMORY           -1
+#define NO_CHILD_PROCESSES      -2
 
-#define UNUSED 0
-#define READY 1
-#define BLOCKED 2
-#define QUIT 3
-#define RUNNING 4
+#define UNUSED      0
+#define READY       1
+#define BLOCKED     2
+#define QUIT        3
+#define RUNNING     4
 
-#define WAITING_FOR_CHILD_TO_QUIT 11
+#define ZAP_OK      0
+#define ZAP_FAIL    -1
