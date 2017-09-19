@@ -97,6 +97,7 @@ void illegalHandler (int interruptType, void* arg);
 #define ZAPPED_WHILE_BLOCKME        -1
 #define ZAPPED_WHILE_UNBLOCKING     -1
 
+#define ZAP_PROC_QUIT       -1
 #define ZAP_OK              0
 #define BLOCKME_OK          0
 #define UNBLOCK_PROC_OK     0

@@ -274,7 +274,7 @@ int fork1(char *name, int (*startFunc)(char *), char *arg,
 
     ProcTable[procSlot].priority = priority;        // set priority
 
-    ProcTable[procSlot].totalExecutionTime = 0;
+    ProcTable[procSlot].totalExecutionTime = -1;
     ProcTable[procSlot].lastReadTime = 0;
     ProcTable[procSlot].startTimeSlice = -1;
     ProcTable[procSlot].exitTimeSlice = -1;
@@ -479,7 +479,8 @@ int join(int *status)
     }
     else {
         Current->childQuitPtr->prevSiblingPtr->nextSiblingPtr = Current->childQuitPtr->nextSiblingPtr;
-        Current->childQuitPtr->nextSiblingPtr->prevSiblingPtr = Current->childQuitPtr->prevSiblingPtr;
+        if (Current->childQuitPtr->nextSiblingPtr != NULL)
+            Current->childQuitPtr->nextSiblingPtr->prevSiblingPtr = Current->childQuitPtr->prevSiblingPtr;
     }
 
     i = Current->childQuitPtr->pid;
@@ -716,6 +717,7 @@ void dispatcher(void)
 
 void  dumpProcesses(void) {
     int i = 0;
+    int time = 0;
     procPtr p = NULL;
     char status[19];
 
@@ -732,9 +734,14 @@ void  dumpProcesses(void) {
 
     for (i = 0; i < MAXPROC; i++) {
         p = &ProcTable[i];
+        if(p->totalExecutionTime <= 0){
+            time = -1;
+        }else{
+            time = (p->totalExecutionTime)/1000;
+        }
         statusMatcher(p->status, status);
         USLOSS_Console("%5d%11d%10d%15s%13d%10d%12s\n", p->pid, p->parentPid, p->priority,
-            status, p->childCount, p->totalExecutionTime, p->name);
+            status, p->childCount, time, p->name);
     }
 }
 
@@ -763,7 +770,10 @@ int zap(int pid) {
     }
 
     // the process to be zapped has already quit
-    if (p->status == QUIT) return ZAP_OK;
+    if (p->status == QUIT) {
+        if (isZapped()) return ZAP_PROC_QUIT;
+        else return ZAP_OK;
+    }
 
     p->zap = 1;
     addToZappedList(p);
@@ -1078,7 +1088,7 @@ int readtime(){
         (Current->lastReadTime - temp);
 
     // return 6;
-    return Current->totalExecutionTime;
+    return (Current->totalExecutionTime);
 }
 
 
@@ -1101,7 +1111,7 @@ void cleanProcess(procPtr p) {
     p->startTimeSlice = -1;
     p->exitTimeSlice = -1;
     p->lastReadTime = 0;
-    p->totalExecutionTime = 0;
+    p->totalExecutionTime = -1;
     p->parentPid = -1;
     p->childCount = 0;
     p->zap = 0;
