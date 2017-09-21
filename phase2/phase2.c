@@ -95,13 +95,13 @@ int MboxCreate(int slots, int slot_size)
         USLOSS_Halt(1);
     }
 
-    for(i = 0; i < MAXMBOX; i++){
+    for(i = 7; i < MAXMBOX; i++){
         if(MailBoxTable[i].status == UNUSED){
 
             MailBoxTable[i].status = CREATED;
-            MailBoxTable[i].mboxID = nextMid;
-            nextMid++;
-
+            MailBoxTable[i].mboxID = i;
+            // nextMid++;
+            
             return MailBoxTable[i].mboxID;
         }
     }
