@@ -6,6 +6,7 @@
 
    ------------------------------------------------------------------------ */
 
+#include <stdio.h>
 #include <phase1.h>
 #include <phase2.h>
 #include <usloss.h>
@@ -20,11 +21,12 @@ extern int start2 (char *);
 /* -------------------------- Globals ------------------------------------- */
 
 int debugflag2 = 0;
+int nextMid = 7;
 
-// the mail boxes 
+// the mail boxes
 mailbox MailBoxTable[MAXMBOX];
 
-// also need array of mail slots, array of function ptrs to system call 
+// also need array of mail slots, array of function ptrs to system call
 // handlers, ...
 
 
@@ -42,24 +44,30 @@ mailbox MailBoxTable[MAXMBOX];
    ----------------------------------------------------------------------- */
 int start1(char *arg)
 {
+    int kid_pid;
+    int status;
+
+    arg = NULL;
+
     if (DEBUG2 && debugflag2)
         USLOSS_Console("start1(): at beginning\n");
 
-    check_kernel_mode("start1");
+    // check_kernel_mode("start1");
 
     // Disable interrupts
-    disableInterrupts();
+    // disableInterrupts();
 
     // Initialize the mail box table, slots, & other data structures.
     // Initialize USLOSS_IntVec and system call handlers,
-    // allocate mailboxes for interrupt handlers.  Etc... 
+    // allocate mailboxes for interrupt handlers.  Etc...
+    init();
 
-    enableInterrupts();
+    // enableInterrupts
 
     // Create a process for start2, then block on a join until start2 quits
     if (DEBUG2 && debugflag2)
         USLOSS_Console("start1(): fork'ing start2 process\n");
-    kid_pid = fork1("start2", start2, NULL, 4 * USLOSS_MIN_STACK, 1);
+    kid_pid = fork1("start2", start2, arg, 4 * USLOSS_MIN_STACK, 1);
     if ( join(&status) != kid_pid ) {
         USLOSS_Console("start2(): join returned something other than ");
         USLOSS_Console("start2's pid\n");
@@ -71,15 +79,34 @@ int start1(char *arg)
 
 /* ------------------------------------------------------------------------
    Name - MboxCreate
-   Purpose - gets a free mailbox from the table of mailboxes and initializes it 
+   Purpose - gets a free mailbox from the table of mailboxes and initializes it
    Parameters - maximum number of slots in the mailbox and the max size of a msg
                 sent to the mailbox.
    Returns - -1 to indicate that no mailbox was created, or a value >= 0 as the
              mailbox id.
-   Side Effects - initializes one element of the mail box array. 
+   Side Effects - initializes one element of the mail box array.
    ----------------------------------------------------------------------- */
 int MboxCreate(int slots, int slot_size)
 {
+    int i;
+
+    if(isKernel()){
+        USLOSS_Console("MboxCreate(): called while in user mode. Halting...\n");
+        USLOSS_Halt(1);
+    }
+
+    for(i = 0; i < MAXMBOX; i++){
+        if(MailBoxTable[i].status == UNUSED){
+
+            MailBoxTable[i].status = CREATED;
+            MailBoxTable[i].mboxID = nextMid;
+            nextMid++;
+
+            return MailBoxTable[i].mboxID;
+        }
+    }
+
+    return -1;
 } /* MboxCreate */
 
 
@@ -93,6 +120,7 @@ int MboxCreate(int slots, int slot_size)
    ----------------------------------------------------------------------- */
 int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
 {
+    return 0;
 } /* MboxSend */
 
 
@@ -107,4 +135,25 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
    ----------------------------------------------------------------------- */
 int MboxReceive(int mbox_id, void *msg_ptr, int msg_size)
 {
+    return 0;
 } /* MboxReceive */
+
+
+/*  TODO
+*   Initializes mailbox table (more to come)
+*/
+void init(){
+    int i;
+    for(i = 0; i < MAXMBOX; i++){
+        MailBoxTable[i].status = UNUSED;
+    }
+}
+
+int isKernel(){
+    // test if in kernel mode (1); halt if in user mode (0)
+    if (!(USLOSS_PsrGet() & USLOSS_PSR_CURRENT_MODE)) {
+        return -1;
+    }
+
+    return 0;
+}

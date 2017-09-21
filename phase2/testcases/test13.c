@@ -11,11 +11,11 @@ int XXp1(char *);
 int XXp3(char *);
 char buf[256];
 
-void test_setup()
+void test_setup(int argc, char *argv[])
 {
 }
 
-void test_cleanup()
+void test_cleanup(int argc, char *argv[])
 {
 }
 

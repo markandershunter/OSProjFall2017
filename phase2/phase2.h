@@ -12,6 +12,9 @@
 #define MAXSLOTS        2500
 #define MAX_MESSAGE     150  // largest possible message in a single slot
 
+#define UNUSED          -1
+#define CREATED         0
+
 // returns id of mailbox, or -1 if no more mailboxes, -2 if invalid args
 extern int MboxCreate(int slots, int slot_size);
 
@@ -34,6 +37,9 @@ extern int MboxCondReceive(int mbox_id, void *msg_ptr, int msg_max_size);
 // status = where interrupt handler puts device's status register.
 extern int waitDevice(int type, int unit, int *status);
 
+extern void init();
+extern int isKernel();
+
 //  The systemArgs structure
 typedef struct systemArgs
 {
@@ -45,7 +51,7 @@ typedef struct systemArgs
         void *arg5;
 } systemArgs;
 
-// 
+//
 extern void (*systemCallVec[])(systemArgs *args);
 
 #endif

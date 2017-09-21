@@ -7,11 +7,11 @@
 #include <phase2.h>
 
 
-void test_setup()
+void test_setup(int argc, char *argv[])
 {
 }
 
-void test_cleanup()
+void test_cleanup(int argc, char *argv[])
 {
 }
 

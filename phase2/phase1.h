@@ -8,7 +8,7 @@
 #include <usloss.h>
 
 /*
- * Maximum number of processes. 
+ * Maximum number of processes.
  */
 
 #define MAXPROC      50
@@ -32,7 +32,7 @@
 #define MAXSYSCALLS  50
 
 
-/* 
+/*
  * Function prototypes for this phase.
  */
 
@@ -50,6 +50,8 @@ extern int   readCurStart_time(void);
 extern void  timeSlice(void);
 extern void  dispatcher(void);
 extern int   readtime(void);
+extern void  enableInterrupts();
+extern void  disableInterrupts();
 
 extern void  p1_fork(int pid);
 extern void  p1_quit(int pid);
