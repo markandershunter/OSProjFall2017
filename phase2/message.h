@@ -6,6 +6,7 @@
 #define SYSTEM_FULL         -2
 #define MAILBOX_FULL        -2
 #define MAILBOX_RELEASED    -3
+#define MAILBOX_EMPTY       -2
 
 
 #define BLOCKED             1
@@ -74,6 +75,3 @@ void appendSlotToMailbox(mailbox* box, int nextSlotID);
 void cleanUpSlot(slotPtr);
 void addToWaitingListReceive(mailbox* box, phase2Proc* proc);
 void addToWaitingListSend(mailbox* box, phase2Proc* proc);
-
-
-

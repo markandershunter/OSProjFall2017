@@ -72,7 +72,7 @@ int start1(char *arg)
 
     // Create a process for start2, then block on a join until start2 quits
     if (DEBUG2 && debugflag2)
-        USLOSS_Console("start1(): fork'ing start2 process\n");
+        USLOSS_Console("start1(): forking start2 process\n");
     kid_pid = fork1("start2", start2, arg, 4 * USLOSS_MIN_STACK, 1);
     if ( join(&status) != kid_pid ) {
         USLOSS_Console("start2(): join returned something other than ");
@@ -110,13 +110,13 @@ int MboxCreate(int slots, int slot_size)
 
             MailBoxTable[nextMid % MAXMBOX].mboxID = nextMid;
             MailBoxTable[nextMid % MAXMBOX].status = CREATED;
-            
+
             MailBoxTable[nextMid % MAXMBOX].numSlots = slots;
             MailBoxTable[nextMid % MAXMBOX].numSlotsUsed = 0;
             MailBoxTable[nextMid % MAXMBOX].slotSize = slot_size;
-            
+
             MailBoxTable[nextMid % MAXMBOX].headSlot = NULL;
-            
+
             return MailBoxTable[nextMid++ % MAXMBOX].mboxID;
         }
         else nextMid++;
@@ -190,8 +190,7 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
 
     box = &MailBoxTable[mbox_id];
 
-
-    
+    // Check if the mailbox is being used
     if (box->status == CREATED) {
 
         //zero slot mailbox behaves completely differently
@@ -199,7 +198,7 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
             // first process to reach mailbox
             if (box->waitingToReceive == NULL) {
                 waitSlot = getNextProcSlot();
-            
+
                 processTable[waitSlot].pid = getpid();
                 processTable[waitSlot].status = BLOCKED;
                 addToWaitingListSend(box, &processTable[waitSlot]);
@@ -216,10 +215,10 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
                 i = box->waitingToReceive->pid;             // save pid of process that was blocked
 
                 box->waitingToReceive->status = UNUSED;     // set it's status back to unused
-                
+
                 nextInLine = box->waitingToReceive->nextProc;   // get the next process that is waiting
                 box->waitingToReceive->nextProc = NULL;         // remove this process from the chain
-                
+
                 box->waitingToReceive = nextInLine;             // second in line becomes first in line
 
                 unblockProc(i);     // unblock process that has been waiting
@@ -233,7 +232,7 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
         // block the process until a slot opens up
         if (box->numSlotsUsed == box->numSlots) {
             waitSlot = getNextProcSlot();
-            
+
             processTable[waitSlot].pid = getpid();
             processTable[waitSlot].status = BLOCKED;
             addToWaitingListSend(box, &processTable[waitSlot]);
@@ -263,10 +262,10 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
             i = box->waitingToReceive->pid;             // save pid of process that was blocked
 
             box->waitingToReceive->status = UNUSED;     // set it's status back to unused
-            
+
             nextInLine = box->waitingToReceive->nextProc;   // get the next process that is waiting
             box->waitingToReceive->nextProc = NULL;         // remove this process from the chain
-            
+
             box->waitingToReceive = nextInLine;             // second in line becomes first in line
 
             unblockProc(i);     // unblock process that has been waiting
@@ -305,12 +304,12 @@ int MboxReceive(int mbox_id, void *msg_ptr, int msg_size)
         USLOSS_Console("MboxCreate(): called while in user mode. Halting...\n");
         USLOSS_Halt(1);
     }
-    
+
     // invalid mailbox or invalid message size
     if (mbox_id < 0 || mbox_id >= MAXMBOX || msg_size < 0 || msg_size > MAX_MESSAGE) return INVALID_PARAMETER;
 
     box = &MailBoxTable[mbox_id];
-    
+
 
     if (box->status == CREATED) {
 
@@ -319,7 +318,7 @@ int MboxReceive(int mbox_id, void *msg_ptr, int msg_size)
             // first process to reach mailbox
             if (box->waitingToSend == NULL) {
                 waitSlot = getNextProcSlot();
-            
+
                 processTable[waitSlot].pid = getpid();
                 processTable[waitSlot].status = BLOCKED;
                 addToWaitingListReceive(box, &processTable[waitSlot]);
@@ -336,10 +335,10 @@ int MboxReceive(int mbox_id, void *msg_ptr, int msg_size)
                 i = box->waitingToSend->pid;            // save pid of process that was blocked
 
                 box->waitingToSend->status = UNUSED;    // set it's status back to unused
-                
+
                 nextInLine = box->waitingToSend->nextProc;  // get the next process that is waiting
                 box->waitingToSend->nextProc = NULL;        // remove this process from the chain
-                
+
                 box->waitingToSend = nextInLine;            // second in line becomes first in line
 
                 unblockProc(i);     // unblock process that has been waiting
@@ -352,7 +351,7 @@ int MboxReceive(int mbox_id, void *msg_ptr, int msg_size)
         // no messages yet, so block
         if (box->headSlot == NULL) {
             waitSlot = getNextProcSlot();
-            
+
             processTable[waitSlot].pid = getpid();
             processTable[waitSlot].status = BLOCKED;
             addToWaitingListReceive(box, &processTable[waitSlot]);
@@ -382,10 +381,10 @@ int MboxReceive(int mbox_id, void *msg_ptr, int msg_size)
             i = box->waitingToSend->pid;                    // save pid of process that was blocked
 
             box->waitingToSend->status = UNUSED;            // set it's status back to unused
-            
+
             nextInLine = box->waitingToSend->nextProc;      // get the next process that is waiting
             box->waitingToSend->nextProc = NULL;            // remove this process from the chain
-            
+
             box->waitingToSend = nextInLine;                // second in line becomes first in line
 
             unblockProc(i);     // unblock process that has been waiting
@@ -424,13 +423,36 @@ int MboxCondSend(int mbox_id, void *msg_ptr, int msg_size) {
     return MboxSend(mbox_id, msg_ptr, msg_size);
 }
 
+/*
+*
+*/
+int MboxCondReceive(int mbox_id, void *msg_ptr, int msg_size){
+    mailbox* box = NULL;
+
+    // check for kernel mode
+    if(isKernel()){
+        USLOSS_Console("MboxCreate(): called while in user mode. Halting...\n");
+        USLOSS_Halt(1);
+    }
+
+    // check for valid parameters
+    if (mbox_id < 0 || mbox_id >= MAXMBOX || msg_size < 0 || msg_size > MAX_MESSAGE){
+        if (DEBUG2 && debugflag2)
+            USLOSS_Console("MboxCondReceive(): Invalid parameters");
+        return INVALID_PARAMETER;
+    }
+
+    box = &MailBoxTable[mbox_id];
+
+    if(box->headSlot == NULL){
+        return MAILBOX_EMPTY;
+    }
+
+    return MboxReceive(mbox_id, msg_ptr, msg_size);
+}
 
 
-
-
-
-
-/*  TODO
+/*
 *   Initializes mailbox table (more to come)
 */
 void init(){
@@ -454,8 +476,8 @@ void init(){
     }
 }
 
+// test if in kernel mode
 int isKernel(){
-    // test if in kernel mode (1); halt if in user mode (0)
     if (!(USLOSS_PsrGet() & USLOSS_PSR_CURRENT_MODE)) {
         return -1;
     }
@@ -520,7 +542,7 @@ void cleanUpSlot(slotPtr oldSlot) {
     oldSlot->mboxID = UNUSED;
     oldSlot->status = UNUSED;
     oldSlot->nextSlot = NULL;
-    oldSlot->slotSize = 0;  
+    oldSlot->slotSize = 0;
 }
 
 
@@ -566,7 +588,3 @@ void addToWaitingListSend(mailbox* box, phase2Proc* proc) {
 
     ptr->nextProc = proc;
 }
-
-
-
-

@@ -47,5 +47,3 @@ do
         count=$(expr $count + 1)
     fi
 done
-
-make clean &> /dev/null
