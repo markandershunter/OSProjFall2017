@@ -44,8 +44,8 @@ $(TESTS):       $(TARGET) p1.o
 # on Linux.  The first occurrence is not necessary on OS X
 
 clean:
-	rm -f $(COBJS) $(TARGET) core term*.out test*.o test??.txt $(TESTS) \
-		p1.o term*in
+	rm -rf $(COBJS) $(TARGET) core term*.out test*.o test??.txt $(TESTS) \
+		p1.o term*in diffOutputs myResults
 
 phase2.o:	message.h
 
