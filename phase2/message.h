@@ -3,6 +3,8 @@
 
 #define INVALID_PARAMETER   -1
 #define BUFFER_TOO_SMALL    -1
+#define SYSTEM_FULL         -2
+#define MAILBOX_FULL        -2
 #define MAILBOX_RELEASED    -3
 
 
