@@ -2,8 +2,10 @@
 #define DEBUG2 1
 
 #define INVALID_PARAMETER   -1
-#define MAILBOX_FULL        -1
 #define BUFFER_TOO_SMALL    -1
+#define SYSTEM_FULL         -2
+#define MAILBOX_FULL        -2
+#define MAILBOX_RELEASED    -3
 
 
 #define BLOCKED             1
@@ -27,6 +29,7 @@ struct mailbox {
     int         slotSize;           // maximum size of a message in the mail slot
     slotPtr     headSlot;
     phase2Proc* waitingToReceive;   // first process in line that is blocked on a receive
+    phase2Proc* waitingToSend;      // first process in line that is blocked on a send
 };
 
 
@@ -45,7 +48,7 @@ struct mailSlot {
 struct phase2Proc {
     int             status;
     int             pid;
-    phase2Proc*      nextProc;           // the next process waiting on a Receive from the same mailbox
+    phase2Proc*     nextProc;           // the next process waiting on a Receive from the same mailbox
 };
 
 
@@ -69,7 +72,8 @@ int getNextSlotID();
 int getNextProcSlot();
 void appendSlotToMailbox(mailbox* box, int nextSlotID);
 void cleanUpSlot(slotPtr);
-void addToWaitingList(mailbox* box, phase2Proc* proc);
+void addToWaitingListReceive(mailbox* box, phase2Proc* proc);
+void addToWaitingListSend(mailbox* box, phase2Proc* proc);
 
 
 
