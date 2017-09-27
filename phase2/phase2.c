@@ -7,6 +7,7 @@
    ------------------------------------------------------------------------ */
 
 #include <stdio.h>
+#include <string.h>
 #include <phase1.h>
 #include <phase2.h>
 #include <usloss.h>
@@ -28,7 +29,12 @@ mailbox MailBoxTable[MAXMBOX];
 
 // also need array of mail slots, array of function ptrs to system call
 // handlers, ...
+mailSlot MailSlotTable[MAXSLOTS];
+int nextSlot = 0;
+int numSlotsUsed = 0;
 
+phase2Proc processTable[MAXPROC];
+int nextProcSlot = 0;
 
 
 
@@ -95,15 +101,24 @@ int MboxCreate(int slots, int slot_size)
         USLOSS_Halt(1);
     }
 
-    for(i = 7; i < MAXMBOX; i++){
-        if(MailBoxTable[i].status == UNUSED){
+    if (slots < 0 || slot_size < 0 || slot_size > MAX_MESSAGE) {
+        return INVALID_PARAMETER;
+    }
 
-            MailBoxTable[i].status = CREATED;
-            MailBoxTable[i].mboxID = i;
-            // nextMid++;
+    for(i = 0; i < MAXMBOX; i++){
+        if(MailBoxTable[nextMid % MAXMBOX].status == UNUSED){
+            MailBoxTable[nextMid % MAXMBOX].mboxID = nextMid;
+            MailBoxTable[nextMid % MAXMBOX].status = CREATED;
             
-            return MailBoxTable[i].mboxID;
+            MailBoxTable[nextMid % MAXMBOX].numSlots = slots;
+            MailBoxTable[nextMid % MAXMBOX].numSlotsUsed = 0;
+            MailBoxTable[nextMid % MAXMBOX].slotSize = slot_size;
+            
+            MailBoxTable[nextMid % MAXMBOX].headSlot = NULL;
+            
+            return MailBoxTable[nextMid++ % MAXMBOX].mboxID;
         }
+        else nextMid++;
     }
 
     return -1;
@@ -120,7 +135,60 @@ int MboxCreate(int slots, int slot_size)
    ----------------------------------------------------------------------- */
 int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
 {
-    return 0;
+    mailbox* box = NULL;
+    phase2Proc* nextInLine = NULL;
+    int nextSlotID = -1;
+
+    // check for kernel mode
+    if(isKernel()){
+        USLOSS_Console("MboxCreate(): called while in user mode. Halting...\n");
+        USLOSS_Halt(1);
+    }
+
+    if (mbox_id < 0 || mbox_id >= MAXMBOX || msg_size < 0 || msg_size > MAX_MESSAGE) return INVALID_PARAMETER;
+
+    // check to make sure there is room in slots table
+    if (numSlotsUsed == MAXSLOTS) {
+        USLOSS_Console("MboxSend(): all slots used. Halting...\n");
+        USLOSS_Halt(1);
+    }
+
+    box = &MailBoxTable[mbox_id];
+
+    if (box->numSlotsUsed == box->numSlots) return MAILBOX_FULL;
+
+    // slots table has room, as does this mailbox
+    if (box->status == CREATED) {
+        nextSlotID = getNextSlotID();
+
+        MailSlotTable[nextSlotID].mboxID = mbox_id;
+        MailSlotTable[nextSlotID].status = CREATED;
+        MailSlotTable[nextSlotID].nextSlot = NULL;
+        MailSlotTable[nextSlotID].slotSize = msg_size;
+
+        memcpy(&MailSlotTable[nextSlotID].message, msg_ptr, msg_size);
+
+        //point to slot from mailbox
+        appendSlotToMailbox(box, nextSlotID);
+
+        // there is a process blocked on a receive
+        if (box->waitingToReceive != NULL) {
+            unblockProc(box->waitingToReceive->pid);    // unblock process that has been waiting
+            box->waitingToReceive->status = UNUSED;     // set it's status back to unused
+            
+            nextInLine = box->waitingToReceive->nextProc;   // get the next process that is waiting
+            box->waitingToReceive->nextProc = NULL;         // remove this process from the chain
+            
+            box->waitingToReceive = nextInLine;             // second in line becomes first in line
+        }
+
+        box->numSlotsUsed++;
+        numSlotsUsed++;
+
+        return 0;
+    }
+    else return INVALID_PARAMETER;
+
 } /* MboxSend */
 
 
@@ -135,7 +203,53 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
    ----------------------------------------------------------------------- */
 int MboxReceive(int mbox_id, void *msg_ptr, int msg_size)
 {
-    return 0;
+    mailbox* box = NULL;
+    slotPtr oldSlot = NULL;
+    int size = -1;
+    int waitSlot = -1;
+
+    // check for kernel mode
+    if(isKernel()){
+        USLOSS_Console("MboxCreate(): called while in user mode. Halting...\n");
+        USLOSS_Halt(1);
+    }
+    
+    // invalid mailbox or invalid message size
+    if (mbox_id < 0 || mbox_id >= MAXMBOX || msg_size < 0 || msg_size > MAX_MESSAGE) return INVALID_PARAMETER;
+
+    box = &MailBoxTable[mbox_id];
+    
+
+    // no messages yet, so block
+    if (box->headSlot == NULL) {
+        waitSlot = getNextProcSlot();
+        
+        processTable[waitSlot].pid = getpid();
+        processTable[waitSlot].status = BLOCKED;
+        addToWaitingList(box, &processTable[waitSlot]);
+
+        blockMe(10 + getpid());
+    }
+
+
+    // message is too big for buffer
+    if (box->headSlot->slotSize > msg_size) return BUFFER_TOO_SMALL;
+
+
+    memcpy(msg_ptr, box->headSlot->message, msg_size);
+    size = box->headSlot->slotSize;
+
+    oldSlot = box->headSlot;
+    box->headSlot = box->headSlot->nextSlot;
+
+    cleanUpSlot(oldSlot);
+
+    box->numSlotsUsed--;
+    numSlotsUsed--;
+
+    return size;
+
+    // return 0;
 } /* MboxReceive */
 
 
@@ -144,8 +258,22 @@ int MboxReceive(int mbox_id, void *msg_ptr, int msg_size)
 */
 void init(){
     int i;
-    for(i = 0; i < MAXMBOX; i++){
+
+    for(i = 0; i < 7; i++){
+        MailBoxTable[i].status = CREATED;
+    }
+
+    for(i = 7; i < MAXMBOX; i++){
         MailBoxTable[i].status = UNUSED;
+    }
+
+    for (i = 0; i < MAXSLOTS; i++) {
+        MailSlotTable[i].status = UNUSED;
+    }
+
+    for (i = 0; i < MAXPROC; i++) {
+        processTable[i].status = UNUSED;
+        processTable[i].nextProc = NULL;
     }
 }
 
@@ -157,3 +285,89 @@ int isKernel(){
 
     return 0;
 }
+
+
+
+
+int getNextSlotID() {
+    int i = 0;
+
+    for (i = 0; i < MAXSLOTS; i++) {
+        if (MailSlotTable[nextSlot % MAXSLOTS].status == UNUSED) return nextSlot;
+        else nextSlot++;
+    }
+
+    return -1;
+}
+
+
+
+int getNextProcSlot() {
+    int i = 0;
+
+    for (i = 0; i < MAXPROC; i++) {
+        if (processTable[nextProcSlot % MAXPROC].status == UNUSED) {
+            return nextProcSlot++;
+        }
+        else nextProcSlot++;
+    }
+
+    return -1;
+}
+
+
+
+void appendSlotToMailbox(mailbox* box, int nextSlotID) {
+    slotPtr ptr = NULL;
+
+    if (box == NULL) return;
+
+    if (box->headSlot == NULL) {
+        box->headSlot = &MailSlotTable[nextSlotID];
+        return;
+    }
+
+    ptr = box->headSlot;
+
+    while (ptr->nextSlot != NULL) {
+        ptr = ptr->nextSlot;
+    }
+
+    ptr->nextSlot = &MailSlotTable[nextSlotID];
+}
+
+
+
+
+void cleanUpSlot(slotPtr oldSlot) {
+    oldSlot->mboxID = UNUSED;
+    oldSlot->status = UNUSED;
+    oldSlot->nextSlot = NULL;
+    oldSlot->slotSize = 0;  
+}
+
+
+
+void addToWaitingList(mailbox* box, phase2Proc* proc) {
+    phase2Proc* ptr = NULL;
+
+    if (box == NULL || proc == NULL) return;
+
+    if (box->waitingToReceive == NULL) {
+        box->waitingToReceive = proc;
+        return;
+    }
+
+
+    ptr = box->waitingToReceive;
+
+    while (ptr->nextProc != NULL) {
+        ptr = ptr->nextProc;
+    }
+
+    ptr->nextProc = proc;
+}
+
+
+
+
