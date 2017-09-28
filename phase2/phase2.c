@@ -11,6 +11,7 @@
 #include <phase1.h>
 #include <phase2.h>
 #include <usloss.h>
+#include <stdint.h>
 
 #include "message.h"
 
@@ -23,6 +24,7 @@ extern int start2 (char *);
 
 int debugflag2 = 0;
 int nextMid = 7;
+int clockCounter = 0;
 
 // the mail boxes
 mailbox MailBoxTable[MAXMBOX];
@@ -180,7 +182,8 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
         USLOSS_Halt(1);
     }
 
-    if (mbox_id < 0 || mbox_id >= MAXMBOX || msg_size < 0 || msg_size > MAX_MESSAGE) return INVALID_PARAMETER;
+
+    if (mbox_id < 0 || mbox_id >= MAXMBOX || msg_size < 0 || msg_size > MailBoxTable[mbox_id].slotSize) return INVALID_PARAMETER;
 
     // check to make sure there is room in slots table
     if (numSlotsUsed == MAXSLOTS) {
@@ -203,11 +206,15 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
                 processTable[waitSlot].status = BLOCKED;
                 addToWaitingListSend(box, &processTable[waitSlot]);
 
+                memcpy(box->zeroSlotSlot, msg_ptr, msg_size);
+                box->zeroSlotSize = msg_size;
+
                 blockMe(10 + getpid());
 
                 // just woke up, make sure mailbox was not released
                 if (box->status == UNUSED) return MAILBOX_RELEASED;
-                else return 0; // rendezvous complete
+
+                return 0; // rendezvous complete
             }
 
             // different process already waiting to receive
@@ -220,6 +227,9 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
                 box->waitingToReceive->nextProc = NULL;         // remove this process from the chain
 
                 box->waitingToReceive = nextInLine;             // second in line becomes first in line
+
+                memcpy(box->zeroSlotSlot, msg_ptr, msg_size);
+                box->zeroSlotSize = msg_size;
 
                 unblockProc(i);     // unblock process that has been waiting
 
@@ -327,7 +337,11 @@ int MboxReceive(int mbox_id, void *msg_ptr, int msg_size)
 
                 // just woke up, make sure mailbox was not released
                 if (box->status == UNUSED) return MAILBOX_RELEASED;
-                else return 0; // rendezvous complete
+
+                memcpy(msg_ptr, box->zeroSlotSlot, msg_size);
+                msg_size = box->zeroSlotSize;
+
+                return msg_size; // rendezvous complete
             }
 
             // different process already waiting to send
@@ -341,9 +355,12 @@ int MboxReceive(int mbox_id, void *msg_ptr, int msg_size)
 
                 box->waitingToSend = nextInLine;            // second in line becomes first in line
 
+                memcpy(msg_ptr, box->zeroSlotSlot, msg_size);
+                msg_size = box->zeroSlotSize;
+
                 unblockProc(i);     // unblock process that has been waiting
 
-                return 0;           // rendezvous complete
+                return msg_size;           // rendezvous complete
             }
         }
 
@@ -411,7 +428,10 @@ int MboxCondSend(int mbox_id, void *msg_ptr, int msg_size) {
         USLOSS_Halt(1);
     }
 
-    if (mbox_id < 0 || mbox_id >= MAXMBOX || msg_size < 0 || msg_size > MAX_MESSAGE) return INVALID_PARAMETER;
+    if (mbox_id < 0 || mbox_id >= MAXMBOX || msg_size < 0 || msg_size > MailBoxTable[mbox_id].slotSize) return INVALID_PARAMETER;
+
+    // check to make sure mailbox has not been released
+    if (MailBoxTable[mbox_id].status == UNUSED) return MAILBOX_DNE;
 
     // check to make sure there is room in slots table
     if (numSlotsUsed == MAXSLOTS) return SYSTEM_FULL;
@@ -435,6 +455,9 @@ int MboxCondReceive(int mbox_id, void *msg_ptr, int msg_size){
         USLOSS_Halt(1);
     }
 
+    // check to make sure mailbox has not been released
+    if (MailBoxTable[mbox_id].status == UNUSED) return MAILBOX_DNE;
+
     // check for valid parameters
     if (mbox_id < 0 || mbox_id >= MAXMBOX || msg_size < 0 || msg_size > MAX_MESSAGE){
         if (DEBUG2 && debugflag2)
@@ -452,14 +475,35 @@ int MboxCondReceive(int mbox_id, void *msg_ptr, int msg_size){
 }
 
 
+int waitDevice(int type, int unit, int *status){
+    if(type == USLOSS_CLOCK_DEV){
+        MboxReceive(0, status, 100);
+    }else if(type == USLOSS_DISK_DEV){
+        MboxReceive(1 + unit, status, 100);
+    }else if(type == USLOSS_TERM_DEV){
+        MboxReceive(3 + unit, status, 100);
+    }
+
+    if(isZapped()) return -1;
+    return 0;
+}
+
+
 /*
-*   Initializes mailbox table (more to come)
+*   Initializes mailbox table
 */
 void init(){
     int i;
 
     for(i = 0; i < 7; i++){
+        MailBoxTable[i].mboxID = i;
+
+        MailBoxTable[i].numSlots = 0;
+        MailBoxTable[i].numSlotsUsed = 0;
+        MailBoxTable[i].slotSize = 100;
         MailBoxTable[i].status = CREATED;
+
+        MailBoxTable[i].headSlot = NULL;
     }
 
     for(i = 7; i < MAXMBOX; i++){
@@ -588,3 +632,43 @@ void addToWaitingListSend(mailbox* box, phase2Proc* proc) {
 
     ptr->nextProc = proc;
 }
+
+void clockHandler (int interruptType, void* arg) {
+    void *status = NULL;
+    int result = 0;
+    if(interruptType == USLOSS_CLOCK_DEV){
+        timeSlice();
+        result = USLOSS_DeviceInput(USLOSS_CLOCK_DEV, 0, status);
+        result++;
+        if(clockCounter == 5){
+            MboxCondSend(0, status, 100);
+            clockCounter = 0;
+        }else clockCounter++;
+    }
+}
+
+void diskHandler (int interruptType, void* arg) {
+    void *status = NULL;
+    int result = 0;
+    if(interruptType == USLOSS_DISK_DEV){
+        result = USLOSS_DeviceInput(USLOSS_DISK_DEV, (uintptr_t) arg, status);
+        result++;
+        MboxCondSend((uintptr_t) arg + 1, status, 100);
+    }
+}
+
+void terminalHandler (int interruptType, void* arg) {
+    USLOSS_Console("it's running\n");
+    void *status = NULL;
+    int result = 0;
+    if(interruptType == USLOSS_TERM_DEV){
+        result = USLOSS_DeviceInput(USLOSS_TERM_DEV, (uintptr_t) arg, status);
+        result++;
+        MboxCondSend((uintptr_t) arg + 3, status, 100);
+    }
+}
+
+void alarmHandler (int interruptType, void* arg) {}
+void mmuHandler (int interruptType, void* arg) {}
+void syscallHandler (int interruptType, void* arg) {}
+void illegalHandler (int interruptType, void* arg) {}

@@ -3,6 +3,8 @@
 
 #define INVALID_PARAMETER   -1
 #define BUFFER_TOO_SMALL    -1
+#define MESSSAGE_TOO_BIG    -1
+#define MAILBOX_DNE         -1
 #define SYSTEM_FULL         -2
 #define MAILBOX_FULL        -2
 #define MAILBOX_RELEASED    -3
@@ -31,6 +33,8 @@ struct mailbox {
     slotPtr     headSlot;
     phase2Proc* waitingToReceive;   // first process in line that is blocked on a receive
     phase2Proc* waitingToSend;      // first process in line that is blocked on a send
+    char        zeroSlotSlot[MAX_MESSAGE];
+    int         zeroSlotSize;
 };
 
 
