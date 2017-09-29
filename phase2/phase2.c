@@ -722,10 +722,9 @@ void diskHandler (int interruptType, void* arg) {
 
 void terminalHandler (int interruptType, void* arg) {
     int status = -1;
-    int i = -1;
 
     if(interruptType == USLOSS_TERM_DEV){
-        status = USLOSS_DeviceInput(USLOSS_TERM_DEV, (uintptr_t) arg, &i);
+        (void) USLOSS_DeviceInput(USLOSS_TERM_DEV, (uintptr_t) arg, &status);
         MboxCondSend((uintptr_t) arg + 3, &status, 100);
     }
 }
