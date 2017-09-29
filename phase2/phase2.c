@@ -278,9 +278,10 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
 
         // there is a process blocked on a receive
         if (box->waitingToReceive != NULL) {
-            i = box->waitingToReceive->pid;             // save pid of process that was blocked
+            // the receiving process will now know which message belongs to it
+            box->waitingToReceive->slotThatHoldsMyMessage = &MailSlotTable[nextSlotID];
 
-            box->waitingToReceive->status = UNUSED;     // set it's status back to unused
+            i = box->waitingToReceive->pid;             // save pid of process that was blocked
 
             nextInLine = box->waitingToReceive->nextProc;   // get the next process that is waiting
             box->waitingToReceive->nextProc = NULL;         // remove this process from the chain
@@ -317,6 +318,7 @@ int MboxReceive(int mbox_id, void *msg_ptr, int msg_size)
     int size = -1;
     int waitSlot = -1;
     int i = -1;
+    int blocked = 0;
 
     // check for kernel mode
     if(isKernel()){
@@ -376,6 +378,7 @@ int MboxReceive(int mbox_id, void *msg_ptr, int msg_size)
 
         // no messages yet, so block
         if (box->headSlot == NULL) {
+            blocked = 1;
             waitSlot = getNextProcSlot();
 
             processTable[waitSlot].pid = getpid();
@@ -393,16 +396,32 @@ int MboxReceive(int mbox_id, void *msg_ptr, int msg_size)
         if (box->headSlot->slotSize > msg_size) return BUFFER_TOO_SMALL;
 
 
-        memcpy(msg_ptr, box->headSlot->message, msg_size);
-        size = box->headSlot->slotSize;
+        // when a process is blocked before it can receive, special care needs to be taken
+        // to make sure that it receives the correct message
+        if (blocked) {
+            memcpy(msg_ptr, processTable[waitSlot].slotThatHoldsMyMessage->message, msg_size);
+            size = processTable[waitSlot].slotThatHoldsMyMessage->slotSize;
+            
+            oldSlot = processTable[waitSlot].slotThatHoldsMyMessage;
+            removeSlotFromMailbox(box, oldSlot);;
 
-        oldSlot = box->headSlot;
-        box->headSlot = box->headSlot->nextSlot;
+            processTable[waitSlot].status = UNUSED;     // set it's status back to unused
 
-        cleanUpSlot(oldSlot);
+            cleanUpSlot(oldSlot);
+        }
+
+        else{
+            memcpy(msg_ptr, box->headSlot->message, msg_size);
+            size = box->headSlot->slotSize;
+
+            oldSlot = box->headSlot;
+            box->headSlot = box->headSlot->nextSlot;
+
+            cleanUpSlot(oldSlot);
+        }
 
 
-        // there is a process blocked on a receive
+        // there is a process blocked on a send
         if (box->waitingToSend != NULL) {
             i = box->waitingToSend->pid;                    // save pid of process that was blocked
 
@@ -535,6 +554,7 @@ void init(){
     for (i = 0; i < MAXPROC; i++) {
         processTable[i].status = UNUSED;
         processTable[i].nextProc = NULL;
+        processTable[i].slotThatHoldsMyMessage = NULL;
     }
 }
 
@@ -583,6 +603,21 @@ int getNextSlotID() {
     }
 
     return -1;
+}
+
+
+
+void removeSlotFromMailbox(mailbox* box, slotPtr thisSlot) {
+    slotPtr temp = box->headSlot;
+
+    if (temp == thisSlot) {
+        box->headSlot = box->headSlot->nextSlot;
+        return;
+    }
+
+    while (temp->nextSlot != thisSlot) temp = temp->nextSlot;
+
+    temp->nextSlot = temp->nextSlot->nextSlot;
 }
 
 

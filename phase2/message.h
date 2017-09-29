@@ -53,7 +53,11 @@ struct mailSlot {
 struct phase2Proc {
     int             status;
     int             pid;
-    phase2Proc*     nextProc;           // the next process waiting on a Receive from the same mailbox
+    phase2Proc*     nextProc;       // the next process waiting on a Receive from the same mailbox
+
+    // a process that has been waiting can't just grab the first
+    // message in line as the different priorities mess this up
+    slotPtr         slotThatHoldsMyMessage;     
 };
 
 
@@ -76,6 +80,7 @@ union psrValues {
 void enableInterrupts();
 void disableInterrupts();
 int getNextSlotID();
+void removeSlotFromMailbox(mailbox* box, slotPtr thisSlot);
 int getNextProcSlot();
 void appendSlotToMailbox(mailbox* box, int nextSlotID);
 void cleanUpSlot(slotPtr);
