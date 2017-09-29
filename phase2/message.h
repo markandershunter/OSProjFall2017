@@ -73,9 +73,27 @@ union psrValues {
 };
 
 
+void enableInterrupts();
+void disableInterrupts();
 int getNextSlotID();
 int getNextProcSlot();
 void appendSlotToMailbox(mailbox* box, int nextSlotID);
 void cleanUpSlot(slotPtr);
 void addToWaitingListReceive(mailbox* box, phase2Proc* proc);
 void addToWaitingListSend(mailbox* box, phase2Proc* proc);
+int chek_io();
+
+
+
+void clockHandler (int interruptType, void* arg);
+void alarmHandler (int interruptType, void* arg);
+void diskHandler (int interruptType, void* arg);
+void terminalHandler (int interruptType, void* arg);
+void mmuHandler (int interruptType, void* arg);
+void syscallHandler (int interruptType, void* arg);
+void illegalHandler (int interruptType, void* arg);
+
+
+
+
+

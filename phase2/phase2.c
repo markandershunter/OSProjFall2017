@@ -60,10 +60,13 @@ int start1(char *arg)
     if (DEBUG2 && debugflag2)
         USLOSS_Console("start1(): at beginning\n");
 
-    // check_kernel_mode("start1");
+    if(isKernel()){
+        USLOSS_Console("start1(): called while in user mode. Halting...\n");
+        USLOSS_Halt(1);
+    }
 
     // Disable interrupts
-    // disableInterrupts();
+    disableInterrupts();
 
     // Initialize the mail box table, slots, & other data structures.
     // Initialize USLOSS_IntVec and system call handlers,
@@ -71,6 +74,7 @@ int start1(char *arg)
     init();
 
     // enableInterrupts
+    enableInterrupts();
 
     // Create a process for start2, then block on a join until start2 quits
     if (DEBUG2 && debugflag2)
@@ -134,6 +138,11 @@ int MboxCreate(int slots, int slot_size)
 
 int MboxRelease(int mbox_id) {
     phase2Proc* proc = NULL;
+
+    if(isKernel()){
+        USLOSS_Console("MboxCreate(): called while in user mode. Halting...\n");
+        USLOSS_Halt(1);
+    }
 
     if (mbox_id < 0 || mbox_id >= MAXMBOX) return INVALID_PARAMETER;
 
@@ -437,10 +446,11 @@ int MboxCondSend(int mbox_id, void *msg_ptr, int msg_size) {
     if (numSlotsUsed == MAXSLOTS) return SYSTEM_FULL;
 
     // check to make sure there is room in the mailbox
-    if (MailBoxTable[mbox_id].numSlotsUsed == MailBoxTable[mbox_id].numSlots) return MAILBOX_FULL;
+    if (MailBoxTable[mbox_id].numSlotsUsed == MailBoxTable[mbox_id].numSlots && MailBoxTable[mbox_id].numSlots != 0) {
+        return MAILBOX_FULL;
+    }
+    else return MboxSend(mbox_id, msg_ptr, msg_size);
 
-
-    return MboxSend(mbox_id, msg_ptr, msg_size);
 }
 
 /*
@@ -495,6 +505,14 @@ int waitDevice(int type, int unit, int *status){
 void init(){
     int i;
 
+    USLOSS_IntVec[USLOSS_CLOCK_INT] = clockHandler;
+    USLOSS_IntVec[USLOSS_ALARM_INT] = alarmHandler;
+    USLOSS_IntVec[USLOSS_DISK_INT] = diskHandler;
+    USLOSS_IntVec[USLOSS_TERM_INT] = terminalHandler;
+    USLOSS_IntVec[USLOSS_MMU_INT] = mmuHandler;
+    USLOSS_IntVec[USLOSS_SYSCALL_INT] = syscallHandler;
+    USLOSS_IntVec[USLOSS_ILLEGAL_INT] = illegalHandler;
+
     for(i = 0; i < 7; i++){
         MailBoxTable[i].mboxID = i;
 
@@ -527,6 +545,30 @@ int isKernel(){
     }
 
     return 0;
+}
+
+
+
+
+/*
+ * Disables the interrupts.
+ */
+void disableInterrupts()
+{
+    // turn the interrupts OFF iff we are in kernel mode
+    // if not in kernel mode, print an error message and
+    // halt USLOSS
+    if(isKernel()){
+        USLOSS_Console("disableInterrupts(): called while in user mode. Halting...\n");
+        USLOSS_Halt(1);
+    }
+
+    (void) USLOSS_PsrSet(USLOSS_PsrGet() & ~USLOSS_PSR_CURRENT_INT);
+} /* disableInterrupts */
+
+
+void enableInterrupts() {
+    (void) USLOSS_PsrSet(USLOSS_PsrGet() | USLOSS_PSR_CURRENT_INT);
 }
 
 
@@ -633,38 +675,58 @@ void addToWaitingListSend(mailbox* box, phase2Proc* proc) {
     ptr->nextProc = proc;
 }
 
+
+
+int check_io()
+{
+    int i = 0;
+
+    for (i = 0; i < 7; i++) {
+        if (MailBoxTable[i].waitingToReceive != NULL) return 1;
+    }
+    
+    return 0;
+}
+
+
+
+
+
+
+
 void clockHandler (int interruptType, void* arg) {
-    void *status = NULL;
-    int result = 0;
+    int status = -1;
+    int i = -1;
+    
     if(interruptType == USLOSS_CLOCK_DEV){
         timeSlice();
-        result = USLOSS_DeviceInput(USLOSS_CLOCK_DEV, 0, status);
-        result++;
-        if(clockCounter == 5){
-            MboxCondSend(0, status, 100);
+        status = USLOSS_DeviceInput(USLOSS_CLOCK_DEV, 0, &i);
+
+        if (clockCounter == 5) {
+            MboxCondSend(0, &status, 100);
             clockCounter = 0;
-        }else clockCounter++;
+        }
+        else clockCounter++;
     }
 }
 
 void diskHandler (int interruptType, void* arg) {
-    void *status = NULL;
-    int result = 0;
+    int status = -1;
+    int i = -1;
+
     if(interruptType == USLOSS_DISK_DEV){
-        result = USLOSS_DeviceInput(USLOSS_DISK_DEV, (uintptr_t) arg, status);
-        result++;
-        MboxCondSend((uintptr_t) arg + 1, status, 100);
+        status = USLOSS_DeviceInput(USLOSS_DISK_DEV, (uintptr_t) arg, &i);
+        MboxCondSend((uintptr_t) arg + 1, &status, 100);
     }
 }
 
 void terminalHandler (int interruptType, void* arg) {
-    USLOSS_Console("it's running\n");
-    void *status = NULL;
-    int result = 0;
+    int status = -1;
+    int i = -1;
+
     if(interruptType == USLOSS_TERM_DEV){
-        result = USLOSS_DeviceInput(USLOSS_TERM_DEV, (uintptr_t) arg, status);
-        result++;
-        MboxCondSend((uintptr_t) arg + 3, status, 100);
+        status = USLOSS_DeviceInput(USLOSS_TERM_DEV, (uintptr_t) arg, &i);
+        MboxCondSend((uintptr_t) arg + 3, &status, 100);
     }
 }
 
