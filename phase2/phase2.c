@@ -832,7 +832,14 @@ void terminalHandler (int interruptType, void* arg) {
 
 void syscallHandler (int interruptType, void* arg) {
     systemArgs* temp = (systemArgs*)arg;
-    SystemCallVector[temp->number](arg);
+
+    if (temp->number >= 0 && temp->number < MAXSYSCALLS) {
+        SystemCallVector[temp->number](arg);
+    }
+    else {
+        USLOSS_Console("syscallHandler(): sys number %d is wrong.  Halting...\n", temp->number);
+        USLOSS_Halt(1);
+    }
 }
 
 
