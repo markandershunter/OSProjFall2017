@@ -38,6 +38,8 @@ int numSlotsUsed = 0;
 phase2Proc processTable[MAXPROC];
 int nextProcSlot = 0;
 
+void (*SystemCallVector[MAXSYSCALLS])(systemArgs *args);
+
 
 
 /* -------------------------- Functions ----------------------------------- */
@@ -563,6 +565,11 @@ void init(){
     USLOSS_IntVec[USLOSS_ILLEGAL_INT] = illegalHandler;
 
 
+    for (i = 0; i < MAXSYSCALLS; i++) {
+        SystemCallVector[i] = nullsys;
+    }
+
+
     for (i = 0; i < MAXMBOX; i++) {
         MailBoxTable[i].mboxID = -1;
         MailBoxTable[i].status = UNUSED;
@@ -790,11 +797,10 @@ int check_io()
 
 void clockHandler (int interruptType, void* arg) {
     int status = -1;
-    int i = -1;
     
     if(interruptType == USLOSS_CLOCK_DEV){
         timeSlice();
-        status = USLOSS_DeviceInput(USLOSS_CLOCK_DEV, 0, &i);
+        (void) USLOSS_DeviceInput(USLOSS_CLOCK_DEV, 0, &status);
 
         if (clockCounter == 5) {
             MboxCondSend(0, &status, 100);
@@ -823,7 +829,22 @@ void terminalHandler (int interruptType, void* arg) {
     }
 }
 
+
+void syscallHandler (int interruptType, void* arg) {
+    systemArgs* temp = (systemArgs*)arg;
+    SystemCallVector[temp->number](arg);
+}
+
+
 void alarmHandler (int interruptType, void* arg) {}
 void mmuHandler (int interruptType, void* arg) {}
-void syscallHandler (int interruptType, void* arg) {}
 void illegalHandler (int interruptType, void* arg) {}
+
+
+/* an error method to handle invalid syscalls */
+void nullsys(systemArgs *args)
+{
+    USLOSS_Console("nullsys(): Invalid syscall %d. Halting...\n", args->number);
+    USLOSS_Halt(1);
+} /* nullsys */
+

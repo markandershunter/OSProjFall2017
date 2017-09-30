@@ -111,6 +111,7 @@ void terminalHandler (int interruptType, void* arg);
 void mmuHandler (int interruptType, void* arg);
 void syscallHandler (int interruptType, void* arg);
 void illegalHandler (int interruptType, void* arg);
+void nullsys(systemArgs *args);
 
 
 
