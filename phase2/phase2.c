@@ -60,10 +60,13 @@ int start1(char *arg)
     if (DEBUG2 && debugflag2)
         USLOSS_Console("start1(): at beginning\n");
 
-    // check_kernel_mode("start1");
+    if(isKernel()){
+        USLOSS_Console("start1(): called while in user mode. Halting...\n");
+        USLOSS_Halt(1);
+    }
 
     // Disable interrupts
-    // disableInterrupts();
+    disableInterrupts();
 
     // Initialize the mail box table, slots, & other data structures.
     // Initialize USLOSS_IntVec and system call handlers,
@@ -71,6 +74,7 @@ int start1(char *arg)
     init();
 
     // enableInterrupts
+    enableInterrupts();
 
     // Create a process for start2, then block on a join until start2 quits
     if (DEBUG2 && debugflag2)
@@ -135,6 +139,11 @@ int MboxCreate(int slots, int slot_size)
 int MboxRelease(int mbox_id) {
     phase2Proc* proc = NULL;
 
+    if(isKernel()){
+        USLOSS_Console("MboxCreate(): called while in user mode. Halting...\n");
+        USLOSS_Halt(1);
+    }
+
     if (mbox_id < 0 || mbox_id >= MAXMBOX) return INVALID_PARAMETER;
 
     MailBoxTable[mbox_id].status = UNUSED;
@@ -175,6 +184,7 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
     int waitSlot = -1;
     int nextSlotID = -1;
     int i = -1;
+    int myMessageNumber = -1;
 
     // check for kernel mode
     if(isKernel()){
@@ -195,6 +205,8 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
 
     // Check if the mailbox is being used
     if (box->status == CREATED) {
+        myMessageNumber = box->nextInLineMessageNumber;
+        box->nextInLineMessageNumber++;
 
         //zero slot mailbox behaves completely differently
         if (box->numSlots == 0) {
@@ -242,14 +254,26 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
         // block the process until a slot opens up
         if (box->numSlotsUsed == box->numSlots) {
             waitSlot = getNextProcSlot();
-
             processTable[waitSlot].pid = getpid();
             processTable[waitSlot].status = BLOCKED;
             addToWaitingListSend(box, &processTable[waitSlot]);
 
             blockMe(10 + getpid());
+
             // just woke up, make sure mailbox was not released
             if (box->status == UNUSED) return MAILBOX_RELEASED;
+
+            while (myMessageNumber > box->numMessagesSent + 1) {
+                waitSlot = getNextProcSlot();
+                processTable[waitSlot].pid = getpid();
+                processTable[waitSlot].status = BLOCKED;
+                addToGetCorrectOrderList(box, &processTable[waitSlot]);
+                
+                blockMe(10 + getpid());
+
+                // just woke up, make sure mailbox was not released
+                if (box->status == UNUSED) return MAILBOX_RELEASED;
+            }
         }
 
 
@@ -264,19 +288,35 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
 
         memcpy(&MailSlotTable[nextSlotID].message, msg_ptr, msg_size);
 
+        box->numMessagesSent++;
+
         //point to slot from mailbox
         appendSlotToMailbox(box, nextSlotID);
 
         // there is a process blocked on a receive
         if (box->waitingToReceive != NULL) {
-            i = box->waitingToReceive->pid;             // save pid of process that was blocked
+            // the receiving process will now know which message belongs to it
+            box->waitingToReceive->slotThatHoldsMyMessage = &MailSlotTable[nextSlotID];
 
-            box->waitingToReceive->status = UNUSED;     // set it's status back to unused
+            i = box->waitingToReceive->pid;             // save pid of process that was blocked
 
             nextInLine = box->waitingToReceive->nextProc;   // get the next process that is waiting
             box->waitingToReceive->nextProc = NULL;         // remove this process from the chain
 
             box->waitingToReceive = nextInLine;             // second in line becomes first in line
+
+            unblockProc(i);     // unblock process that has been waiting
+        }
+
+        // there are processes blocked on a send that tried to go ahead of me
+        while (box->getCorrectOrder != NULL) {
+
+            i = box->getCorrectOrder->pid;             // save pid of process that was blocked
+
+            nextInLine = box->getCorrectOrder->nextProc;   // get the next process that is waiting
+            box->getCorrectOrder->nextProc = NULL;         // remove this process from the chain
+
+            box->getCorrectOrder = nextInLine;             // second in line becomes first in line
 
             unblockProc(i);     // unblock process that has been waiting
         }
@@ -308,6 +348,7 @@ int MboxReceive(int mbox_id, void *msg_ptr, int msg_size)
     int size = -1;
     int waitSlot = -1;
     int i = -1;
+    int blocked = 0;
 
     // check for kernel mode
     if(isKernel()){
@@ -367,6 +408,7 @@ int MboxReceive(int mbox_id, void *msg_ptr, int msg_size)
 
         // no messages yet, so block
         if (box->headSlot == NULL) {
+            blocked = 1;
             waitSlot = getNextProcSlot();
 
             processTable[waitSlot].pid = getpid();
@@ -384,16 +426,32 @@ int MboxReceive(int mbox_id, void *msg_ptr, int msg_size)
         if (box->headSlot->slotSize > msg_size) return BUFFER_TOO_SMALL;
 
 
-        memcpy(msg_ptr, box->headSlot->message, msg_size);
-        size = box->headSlot->slotSize;
+        // when a process is blocked before it can receive, special care needs to be taken
+        // to make sure that it receives the correct message
+        if (blocked) {
+            memcpy(msg_ptr, processTable[waitSlot].slotThatHoldsMyMessage->message, msg_size);
+            size = processTable[waitSlot].slotThatHoldsMyMessage->slotSize;
+            
+            oldSlot = processTable[waitSlot].slotThatHoldsMyMessage;
+            removeSlotFromMailbox(box, oldSlot);;
 
-        oldSlot = box->headSlot;
-        box->headSlot = box->headSlot->nextSlot;
+            processTable[waitSlot].status = UNUSED;     // set it's status back to unused
 
-        cleanUpSlot(oldSlot);
+            cleanUpSlot(oldSlot);
+        }
+
+        else{
+            memcpy(msg_ptr, box->headSlot->message, msg_size);
+            size = box->headSlot->slotSize;
+
+            oldSlot = box->headSlot;
+            box->headSlot = box->headSlot->nextSlot;
+
+            cleanUpSlot(oldSlot);
+        }
 
 
-        // there is a process blocked on a receive
+        // there is a process blocked on a send
         if (box->waitingToSend != NULL) {
             i = box->waitingToSend->pid;                    // save pid of process that was blocked
 
@@ -437,10 +495,11 @@ int MboxCondSend(int mbox_id, void *msg_ptr, int msg_size) {
     if (numSlotsUsed == MAXSLOTS) return SYSTEM_FULL;
 
     // check to make sure there is room in the mailbox
-    if (MailBoxTable[mbox_id].numSlotsUsed == MailBoxTable[mbox_id].numSlots) return MAILBOX_FULL;
+    if (MailBoxTable[mbox_id].numSlotsUsed == MailBoxTable[mbox_id].numSlots && MailBoxTable[mbox_id].numSlots != 0) {
+        return MAILBOX_FULL;
+    }
+    else return MboxSend(mbox_id, msg_ptr, msg_size);
 
-
-    return MboxSend(mbox_id, msg_ptr, msg_size);
 }
 
 /*
@@ -495,20 +554,37 @@ int waitDevice(int type, int unit, int *status){
 void init(){
     int i;
 
-    for(i = 0; i < 7; i++){
-        MailBoxTable[i].mboxID = i;
+    USLOSS_IntVec[USLOSS_CLOCK_INT] = clockHandler;
+    USLOSS_IntVec[USLOSS_ALARM_INT] = alarmHandler;
+    USLOSS_IntVec[USLOSS_DISK_INT] = diskHandler;
+    USLOSS_IntVec[USLOSS_TERM_INT] = terminalHandler;
+    USLOSS_IntVec[USLOSS_MMU_INT] = mmuHandler;
+    USLOSS_IntVec[USLOSS_SYSCALL_INT] = syscallHandler;
+    USLOSS_IntVec[USLOSS_ILLEGAL_INT] = illegalHandler;
 
+
+    for (i = 0; i < MAXMBOX; i++) {
+        MailBoxTable[i].mboxID = -1;
+        MailBoxTable[i].status = UNUSED;
         MailBoxTable[i].numSlots = 0;
         MailBoxTable[i].numSlotsUsed = 0;
+        MailBoxTable[i].slotSize = 0;
+        MailBoxTable[i].headSlot = NULL;
+        MailBoxTable[i].waitingToReceive = NULL;
+        MailBoxTable[i].waitingToSend = NULL;
+        MailBoxTable[i].getCorrectOrder = NULL;
+        MailBoxTable[i].zeroSlotSize = 0;
+        MailBoxTable[i].numMessagesSent = 0;
+        MailBoxTable[i].nextInLineMessageNumber = 1;
+    }
+
+    for(i = 0; i < 7; i++){
+        MailBoxTable[i].mboxID = i;
         MailBoxTable[i].slotSize = 100;
         MailBoxTable[i].status = CREATED;
-
-        MailBoxTable[i].headSlot = NULL;
     }
 
-    for(i = 7; i < MAXMBOX; i++){
-        MailBoxTable[i].status = UNUSED;
-    }
+
 
     for (i = 0; i < MAXSLOTS; i++) {
         MailSlotTable[i].status = UNUSED;
@@ -517,6 +593,7 @@ void init(){
     for (i = 0; i < MAXPROC; i++) {
         processTable[i].status = UNUSED;
         processTable[i].nextProc = NULL;
+        processTable[i].slotThatHoldsMyMessage = NULL;
     }
 }
 
@@ -532,6 +609,30 @@ int isKernel(){
 
 
 
+/*
+ * Disables the interrupts.
+ */
+void disableInterrupts()
+{
+    // turn the interrupts OFF iff we are in kernel mode
+    // if not in kernel mode, print an error message and
+    // halt USLOSS
+    if(isKernel()){
+        USLOSS_Console("disableInterrupts(): called while in user mode. Halting...\n");
+        USLOSS_Halt(1);
+    }
+
+    (void) USLOSS_PsrSet(USLOSS_PsrGet() & ~USLOSS_PSR_CURRENT_INT);
+} /* disableInterrupts */
+
+
+void enableInterrupts() {
+    (void) USLOSS_PsrSet(USLOSS_PsrGet() | USLOSS_PSR_CURRENT_INT);
+}
+
+
+
+
 int getNextSlotID() {
     int i = 0;
 
@@ -541,6 +642,21 @@ int getNextSlotID() {
     }
 
     return -1;
+}
+
+
+
+void removeSlotFromMailbox(mailbox* box, slotPtr thisSlot) {
+    slotPtr temp = box->headSlot;
+
+    if (temp == thisSlot) {
+        box->headSlot = box->headSlot->nextSlot;
+        return;
+    }
+
+    while (temp->nextSlot != thisSlot) temp = temp->nextSlot;
+
+    temp->nextSlot = temp->nextSlot->nextSlot;
 }
 
 
@@ -623,7 +739,6 @@ void addToWaitingListSend(mailbox* box, phase2Proc* proc) {
         return;
     }
 
-
     ptr = box->waitingToSend;
 
     while (ptr->nextProc != NULL) {
@@ -633,38 +748,78 @@ void addToWaitingListSend(mailbox* box, phase2Proc* proc) {
     ptr->nextProc = proc;
 }
 
+
+
+void addToGetCorrectOrderList(mailbox* box, phase2Proc* proc) {
+    phase2Proc* ptr = NULL;
+
+    if (box == NULL || proc == NULL) return;
+
+    if (box->getCorrectOrder == NULL) {
+        box->getCorrectOrder = proc;
+        return;
+    }
+
+    ptr = box->getCorrectOrder;
+
+    while (ptr->nextProc != NULL) {
+        ptr = ptr->nextProc;
+    }
+
+    ptr->nextProc = proc;
+}
+
+
+
+int check_io()
+{
+    int i = 0;
+
+    for (i = 0; i < 7; i++) {
+        if (MailBoxTable[i].waitingToReceive != NULL) return 1;
+    }
+    
+    return 0;
+}
+
+
+
+
+
+
+
 void clockHandler (int interruptType, void* arg) {
-    void *status = NULL;
-    int result = 0;
+    int status = -1;
+    int i = -1;
+    
     if(interruptType == USLOSS_CLOCK_DEV){
         timeSlice();
-        result = USLOSS_DeviceInput(USLOSS_CLOCK_DEV, 0, status);
-        result++;
-        if(clockCounter == 5){
-            MboxCondSend(0, status, 100);
+        status = USLOSS_DeviceInput(USLOSS_CLOCK_DEV, 0, &i);
+
+        if (clockCounter == 5) {
+            MboxCondSend(0, &status, 100);
             clockCounter = 0;
-        }else clockCounter++;
+        }
+        else clockCounter++;
     }
 }
 
 void diskHandler (int interruptType, void* arg) {
-    void *status = NULL;
-    int result = 0;
+    int status = -1;
+    int i = -1;
+
     if(interruptType == USLOSS_DISK_DEV){
-        result = USLOSS_DeviceInput(USLOSS_DISK_DEV, (uintptr_t) arg, status);
-        result++;
-        MboxCondSend((uintptr_t) arg + 1, status, 100);
+        status = USLOSS_DeviceInput(USLOSS_DISK_DEV, (uintptr_t) arg, &i);
+        MboxCondSend((uintptr_t) arg + 1, &status, 100);
     }
 }
 
 void terminalHandler (int interruptType, void* arg) {
-    USLOSS_Console("it's running\n");
-    void *status = NULL;
-    int result = 0;
+    int status = -1;
+
     if(interruptType == USLOSS_TERM_DEV){
-        result = USLOSS_DeviceInput(USLOSS_TERM_DEV, (uintptr_t) arg, status);
-        result++;
-        MboxCondSend((uintptr_t) arg + 3, status, 100);
+        (void) USLOSS_DeviceInput(USLOSS_TERM_DEV, (uintptr_t) arg, &status);
+        MboxCondSend((uintptr_t) arg + 3, &status, 100);
     }
 }
 
