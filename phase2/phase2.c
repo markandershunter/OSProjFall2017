@@ -184,6 +184,7 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
     int waitSlot = -1;
     int nextSlotID = -1;
     int i = -1;
+    int myMessageNumber = -1;
 
     // check for kernel mode
     if(isKernel()){
@@ -204,6 +205,8 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
 
     // Check if the mailbox is being used
     if (box->status == CREATED) {
+        myMessageNumber = box->nextInLineMessageNumber;
+        box->nextInLineMessageNumber++;
 
         //zero slot mailbox behaves completely differently
         if (box->numSlots == 0) {
@@ -251,14 +254,26 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
         // block the process until a slot opens up
         if (box->numSlotsUsed == box->numSlots) {
             waitSlot = getNextProcSlot();
-
             processTable[waitSlot].pid = getpid();
             processTable[waitSlot].status = BLOCKED;
             addToWaitingListSend(box, &processTable[waitSlot]);
 
             blockMe(10 + getpid());
+
             // just woke up, make sure mailbox was not released
             if (box->status == UNUSED) return MAILBOX_RELEASED;
+
+            while (myMessageNumber > box->numMessagesSent + 1) {
+                waitSlot = getNextProcSlot();
+                processTable[waitSlot].pid = getpid();
+                processTable[waitSlot].status = BLOCKED;
+                addToGetCorrectOrderList(box, &processTable[waitSlot]);
+                
+                blockMe(10 + getpid());
+
+                // just woke up, make sure mailbox was not released
+                if (box->status == UNUSED) return MAILBOX_RELEASED;
+            }
         }
 
 
@@ -272,6 +287,8 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
         MailSlotTable[nextSlotID].slotSize = msg_size;
 
         memcpy(&MailSlotTable[nextSlotID].message, msg_ptr, msg_size);
+
+        box->numMessagesSent++;
 
         //point to slot from mailbox
         appendSlotToMailbox(box, nextSlotID);
@@ -287,6 +304,19 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
             box->waitingToReceive->nextProc = NULL;         // remove this process from the chain
 
             box->waitingToReceive = nextInLine;             // second in line becomes first in line
+
+            unblockProc(i);     // unblock process that has been waiting
+        }
+
+        // there are processes blocked on a send that tried to go ahead of me
+        while (box->getCorrectOrder != NULL) {
+
+            i = box->getCorrectOrder->pid;             // save pid of process that was blocked
+
+            nextInLine = box->getCorrectOrder->nextProc;   // get the next process that is waiting
+            box->getCorrectOrder->nextProc = NULL;         // remove this process from the chain
+
+            box->getCorrectOrder = nextInLine;             // second in line becomes first in line
 
             unblockProc(i);     // unblock process that has been waiting
         }
@@ -532,20 +562,29 @@ void init(){
     USLOSS_IntVec[USLOSS_SYSCALL_INT] = syscallHandler;
     USLOSS_IntVec[USLOSS_ILLEGAL_INT] = illegalHandler;
 
-    for(i = 0; i < 7; i++){
-        MailBoxTable[i].mboxID = i;
 
+    for (i = 0; i < MAXMBOX; i++) {
+        MailBoxTable[i].mboxID = -1;
+        MailBoxTable[i].status = UNUSED;
         MailBoxTable[i].numSlots = 0;
         MailBoxTable[i].numSlotsUsed = 0;
+        MailBoxTable[i].slotSize = 0;
+        MailBoxTable[i].headSlot = NULL;
+        MailBoxTable[i].waitingToReceive = NULL;
+        MailBoxTable[i].waitingToSend = NULL;
+        MailBoxTable[i].getCorrectOrder = NULL;
+        MailBoxTable[i].zeroSlotSize = 0;
+        MailBoxTable[i].numMessagesSent = 0;
+        MailBoxTable[i].nextInLineMessageNumber = 1;
+    }
+
+    for(i = 0; i < 7; i++){
+        MailBoxTable[i].mboxID = i;
         MailBoxTable[i].slotSize = 100;
         MailBoxTable[i].status = CREATED;
-
-        MailBoxTable[i].headSlot = NULL;
     }
 
-    for(i = 7; i < MAXMBOX; i++){
-        MailBoxTable[i].status = UNUSED;
-    }
+
 
     for (i = 0; i < MAXSLOTS; i++) {
         MailSlotTable[i].status = UNUSED;
@@ -700,8 +739,28 @@ void addToWaitingListSend(mailbox* box, phase2Proc* proc) {
         return;
     }
 
-
     ptr = box->waitingToSend;
+
+    while (ptr->nextProc != NULL) {
+        ptr = ptr->nextProc;
+    }
+
+    ptr->nextProc = proc;
+}
+
+
+
+void addToGetCorrectOrderList(mailbox* box, phase2Proc* proc) {
+    phase2Proc* ptr = NULL;
+
+    if (box == NULL || proc == NULL) return;
+
+    if (box->getCorrectOrder == NULL) {
+        box->getCorrectOrder = proc;
+        return;
+    }
+
+    ptr = box->getCorrectOrder;
 
     while (ptr->nextProc != NULL) {
         ptr = ptr->nextProc;

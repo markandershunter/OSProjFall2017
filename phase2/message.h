@@ -33,8 +33,21 @@ struct mailbox {
     slotPtr     headSlot;
     phase2Proc* waitingToReceive;   // first process in line that is blocked on a receive
     phase2Proc* waitingToSend;      // first process in line that is blocked on a send
+    phase2Proc* getCorrectOrder;    // ensures messages are sent in correct order despite different priorities
     char        zeroSlotSlot[MAX_MESSAGE];
     int         zeroSlotSize;
+    int         numMessagesSent;
+
+    // an example illustrates this best:
+    // a mailbox has 5 slots, they are all filled.
+    // 2 more messages are waiting to be sent.
+    // nextInLineMessageNumber is 8. If the first 7
+    // processes deliver their messages successfully
+    // and the mailbox is empty, nextInLineMessageNumber
+    // will still be 8 (it only increases). It is used
+    // to keep messages in order when processes of different
+    // priorities have to wait
+    int         nextInLineMessageNumber;
 };
 
 
@@ -86,6 +99,7 @@ void appendSlotToMailbox(mailbox* box, int nextSlotID);
 void cleanUpSlot(slotPtr);
 void addToWaitingListReceive(mailbox* box, phase2Proc* proc);
 void addToWaitingListSend(mailbox* box, phase2Proc* proc);
+void addToGetCorrectOrderList(mailbox* box, phase2Proc* proc);
 int chek_io();
 
 
