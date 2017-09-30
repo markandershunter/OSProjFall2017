@@ -114,7 +114,7 @@ int MboxCreate(int slots, int slot_size)
     for(i = 0; i < MAXMBOX; i++){
         if(MailBoxTable[nextMid % MAXMBOX].status == UNUSED){
 
-            MailBoxTable[nextMid % MAXMBOX].mboxID = nextMid;
+            MailBoxTable[nextMid % MAXMBOX].mboxID = nextMid % MAXMBOX;
             MailBoxTable[nextMid % MAXMBOX].status = CREATED;
 
             MailBoxTable[nextMid % MAXMBOX].numSlots = slots;
