@@ -573,13 +573,6 @@ void init(){
         SystemCallVector[i] = nullsys;
     }
 
-    for (i = 0; i < MAXMBOX; i++){
-        for (j = 0; j < MAX_MESSAGE; j++){
-            MailBoxTable[i].zeroSlotSlot[j] = '\0';
-        }
-    }
-
-
     for (i = 0; i < MAXMBOX; i++) {
         MailBoxTable[i].mboxID = -1;
         MailBoxTable[i].status = UNUSED;
