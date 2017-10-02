@@ -558,7 +558,6 @@ int waitDevice(int type, int unit, int *status){
 */
 void init(){
     int i;
-    int j;
 
     USLOSS_IntVec[USLOSS_CLOCK_INT] = clockHandler;
     USLOSS_IntVec[USLOSS_ALARM_INT] = alarmHandler;
