@@ -270,7 +270,7 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
                 processTable[waitSlot].pid = getpid();
                 processTable[waitSlot].status = BLOCKED;
                 addToGetCorrectOrderList(box, &processTable[waitSlot]);
-                
+
                 blockMe(10 + getpid());
 
                 // just woke up, make sure mailbox was not released
@@ -308,6 +308,8 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
             box->waitingToReceive = nextInLine;             // second in line becomes first in line
 
             unblockProc(i);     // unblock process that has been waiting
+
+            if(box->recv_size < msg_size) return RECV_TOO_SMALL;
         }
 
         // there are processes blocked on a send that tried to go ahead of me
@@ -416,6 +418,7 @@ int MboxReceive(int mbox_id, void *msg_ptr, int msg_size)
             processTable[waitSlot].pid = getpid();
             processTable[waitSlot].status = BLOCKED;
             addToWaitingListReceive(box, &processTable[waitSlot]);
+            box->recv_size = msg_size;
 
             blockMe(10 + getpid());
 
@@ -433,7 +436,7 @@ int MboxReceive(int mbox_id, void *msg_ptr, int msg_size)
         if (blocked) {
             memcpy(msg_ptr, processTable[waitSlot].slotThatHoldsMyMessage->message, msg_size);
             size = processTable[waitSlot].slotThatHoldsMyMessage->slotSize;
-            
+
             oldSlot = processTable[waitSlot].slotThatHoldsMyMessage;
             removeSlotFromMailbox(box, oldSlot);;
 
@@ -538,11 +541,11 @@ int MboxCondReceive(int mbox_id, void *msg_ptr, int msg_size){
 
 int waitDevice(int type, int unit, int *status){
     if(type == USLOSS_CLOCK_DEV){
-        MboxReceive(0, status, 100);
+        MboxReceive(0, status, 4);
     }else if(type == USLOSS_DISK_DEV){
-        MboxReceive(1 + unit, status, 100);
+        MboxReceive(1 + unit, status, 4);
     }else if(type == USLOSS_TERM_DEV){
-        MboxReceive(3 + unit, status, 100);
+        MboxReceive(3 + unit, status, 4);
     }
 
     if(isZapped()) return -1;
@@ -555,6 +558,7 @@ int waitDevice(int type, int unit, int *status){
 */
 void init(){
     int i;
+    int j;
 
     USLOSS_IntVec[USLOSS_CLOCK_INT] = clockHandler;
     USLOSS_IntVec[USLOSS_ALARM_INT] = alarmHandler;
@@ -567,6 +571,12 @@ void init(){
 
     for (i = 0; i < MAXSYSCALLS; i++) {
         SystemCallVector[i] = nullsys;
+    }
+
+    for (i = 0; i < MAXMBOX; i++){
+        for (j = 0; j < MAX_MESSAGE; j++){
+            MailBoxTable[i].zeroSlotSlot[j] = '\0';
+        }
     }
 
 
@@ -621,6 +631,7 @@ int isKernel(){
  */
 void disableInterrupts()
 {
+    int i;
     // turn the interrupts OFF iff we are in kernel mode
     // if not in kernel mode, print an error message and
     // halt USLOSS
@@ -629,12 +640,15 @@ void disableInterrupts()
         USLOSS_Halt(1);
     }
 
-    (void) USLOSS_PsrSet(USLOSS_PsrGet() & ~USLOSS_PSR_CURRENT_INT);
+    i = USLOSS_PsrSet(USLOSS_PsrGet() & ~USLOSS_PSR_CURRENT_INT);
+    i++;
 } /* disableInterrupts */
 
 
 void enableInterrupts() {
-    (void) USLOSS_PsrSet(USLOSS_PsrGet() | USLOSS_PSR_CURRENT_INT);
+    int i;
+    i = USLOSS_PsrSet(USLOSS_PsrGet() | USLOSS_PSR_CURRENT_INT);
+    i++;
 }
 
 
@@ -785,7 +799,7 @@ int check_io()
     for (i = 0; i < 7; i++) {
         if (MailBoxTable[i].waitingToReceive != NULL) return 1;
     }
-    
+
     return 0;
 }
 
@@ -797,10 +811,12 @@ int check_io()
 
 void clockHandler (int interruptType, void* arg) {
     int status = -1;
-    
+    int i;
+
     if(interruptType == USLOSS_CLOCK_DEV){
         timeSlice();
-        (void) USLOSS_DeviceInput(USLOSS_CLOCK_DEV, 0, &status);
+        i = USLOSS_DeviceInput(USLOSS_CLOCK_DEV, 0, &status);
+        i++;
 
         if (clockCounter == 5) {
             MboxCondSend(0, &status, 100);
@@ -822,10 +838,12 @@ void diskHandler (int interruptType, void* arg) {
 
 void terminalHandler (int interruptType, void* arg) {
     int status = -1;
+    int i;
 
     if(interruptType == USLOSS_TERM_DEV){
-        (void) USLOSS_DeviceInput(USLOSS_TERM_DEV, (uintptr_t) arg, &status);
-        MboxCondSend((uintptr_t) arg + 3, &status, 100);
+        i = USLOSS_DeviceInput(USLOSS_TERM_DEV, (uintptr_t) arg, &status);
+        i++;
+        MboxCondSend((uintptr_t) arg + 3, &status, 4);
     }
 }
 
@@ -854,4 +872,3 @@ void nullsys(systemArgs *args)
     USLOSS_Console("nullsys(): Invalid syscall %d. Halting...\n", args->number);
     USLOSS_Halt(1);
 } /* nullsys */
-

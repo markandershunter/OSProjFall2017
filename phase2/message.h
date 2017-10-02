@@ -3,6 +3,7 @@
 
 #define INVALID_PARAMETER   -1
 #define BUFFER_TOO_SMALL    -1
+#define RECV_TOO_SMALL      -1
 #define MESSSAGE_TOO_BIG    -1
 #define MAILBOX_DNE         -1
 #define SYSTEM_FULL         -2
@@ -37,6 +38,7 @@ struct mailbox {
     char        zeroSlotSlot[MAX_MESSAGE];
     int         zeroSlotSize;
     int         numMessagesSent;
+    int         recv_size;
 
     // an example illustrates this best:
     // a mailbox has 5 slots, they are all filled.
@@ -70,7 +72,7 @@ struct phase2Proc {
 
     // a process that has been waiting can't just grab the first
     // message in line as the different priorities mess this up
-    slotPtr         slotThatHoldsMyMessage;     
+    slotPtr         slotThatHoldsMyMessage;
 };
 
 
@@ -112,8 +114,3 @@ void mmuHandler (int interruptType, void* arg);
 void syscallHandler (int interruptType, void* arg);
 void illegalHandler (int interruptType, void* arg);
 void nullsys(systemArgs *args);
-
-
-
-
-
