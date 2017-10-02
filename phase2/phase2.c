@@ -810,11 +810,11 @@ void clockHandler (int interruptType, void* arg) {
         i = USLOSS_DeviceInput(USLOSS_CLOCK_DEV, 0, &status);
         i++;
 
-        if (clockCounter == 5) {
-            MboxCondSend(0, &status, 100);
-            clockCounter = 0;
+        clockCounter++;
+
+        if (clockCounter % 5 == 0) {
+            MboxCondSend(0, &status, 4);
         }
-        else clockCounter++;
     }
 }
 
