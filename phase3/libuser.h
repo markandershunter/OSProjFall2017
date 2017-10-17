@@ -14,8 +14,8 @@ extern void GetTimeofDay(int *tod);
 extern void CPUTime(int *cpu);
 extern void GetPID(int *pid);
 extern int  SemCreate(long value, int *semaphore);
-extern int  SemP(int semaphore);
-extern int  SemV(int semaphore);
+extern int  SemP(long semaphore);
+extern int  SemV(long semaphore);
 extern int  SemFree(int semaphore);
 
 #endif

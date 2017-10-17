@@ -139,10 +139,17 @@ int SemCreate(long value, int *semaphore)
  *  Arguments:
  *
  */
-int SemP(int semaphore)
+int SemP(long semaphore)
 {
-    int something = 0;
-    return something;
+    USLOSS_Sysargs sysArg;
+    
+    CHECKMODE;
+    sysArg.number = SYS_SEMP;
+    sysArg.arg1 = (void*) semaphore;
+
+    USLOSS_Syscall(&sysArg);
+
+    return (int) sysArg.arg4;
 } /* end of SemP */
 
 
@@ -154,10 +161,17 @@ int SemP(int semaphore)
  *  Arguments:
  *
  */
-int SemV(int semaphore)
+int SemV(long semaphore)
 {
-    int something = 0;
-    return something;
+    USLOSS_Sysargs sysArg;
+    
+    CHECKMODE;
+    sysArg.number = SYS_SEMV;
+    sysArg.arg1 = (void*) semaphore;
+
+    USLOSS_Syscall(&sysArg);
+
+    return (int) sysArg.arg4;
 } /* end of SemV */
 
 

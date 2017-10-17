@@ -26,6 +26,7 @@ struct process {
 struct semaphore {
     int     status;
     int     value;
+    int     mboxID;         // every semaphore has a mailbox so that it can block processes
 };
 
 
@@ -50,6 +51,12 @@ void    terminateReal(int status);
 
 void    semCreate(USLOSS_Sysargs* args);
 long    semCreateReal(int value, long* status);
+
+void    semP(USLOSS_Sysargs* args);
+long    semPReal(int semNumber);
+
+void    semV(USLOSS_Sysargs* args);
+long    semVReal(int semNumber);
 
 
 // helper functions
