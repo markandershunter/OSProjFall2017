@@ -16,6 +16,6 @@ extern void GetPID(int *pid);
 extern int  SemCreate(long value, int *semaphore);
 extern int  SemP(long semaphore);
 extern int  SemV(long semaphore);
-extern int  SemFree(int semaphore);
+extern int  SemFree(long semaphore);
 
 #endif
