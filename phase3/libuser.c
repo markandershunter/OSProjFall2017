@@ -35,8 +35,8 @@
  *  Return Value: 0 means success, -1 means error occurs
  *
  */
-int Spawn(char *name, int (*func)(char *), char *arg, int stack_size, 
-    int priority, int *pid)   
+int Spawn(char *name, int (*func)(char *), char *arg, long stack_size, 
+    long priority, int *pid)   
 {
     USLOSS_Sysargs sysArg;
     
@@ -95,9 +95,20 @@ int Wait(int *pid, int *status)
  *  Return Value: 0 means success, -1 means error occurs
  *
  */
-void Terminate(int status)
+void Terminate(long status)
 {
+    USLOSS_Sysargs sysArg;
     
+    CHECKMODE;
+
+    sysArg.number = SYS_TERMINATE;
+    sysArg.arg1 = (void *) status;
+
+    USLOSS_Syscall(&sysArg);
+
+    // *pid = (int) sysArg.arg1;
+    // *status = (int) sysArg.arg2;
+    // return (int) sysArg.arg4;
 } /* end of Terminate */
 
 

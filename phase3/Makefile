@@ -40,10 +40,10 @@ $(TARGET):	$(COBJS)
 
 $(TESTS):	$(TARGET) p1.o
 	$(CC) $(CFLAGS) -c $(TESTDIR)/$@.c
-	$(CC) $(LDFLAGS) -o $@ $@.o $(LIBS) p1.o
+	$(CC) $(LDFLAGS) -o $@ $(LIBS) $@.o $(LIBS) p1.o $(LIBS)
 
 clean:
-	rm -f $(COBJS) $(TARGET) test*.o test*.txt term* $(TESTS) \
+	rm -rf $(COBJS) $(TARGET) test*.o test*.txt term* $(TESTS) diffOutputs myResults \
 		libuser.o p1.o core
 
 phase3.o:	sems.h
