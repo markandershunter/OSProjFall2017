@@ -128,6 +128,8 @@ long spawnReal(char* name, int(*startFunc)(char *), void* arg, int stackSize, in
 }
 
 int spawnLaunch(char* arg) {
+    int returnValue =-1;
+
     if (!processTable[getpid() % MAXPROC].entryMade) {
         processTable[getpid() % MAXPROC].pid = getpid();
         processTable[getpid() % MAXPROC].entryMade = 1;
@@ -137,7 +139,11 @@ int spawnLaunch(char* arg) {
     }
 
     setToUserMode();
-    return startFuncGlobal(arg);
+    returnValue = startFuncGlobal(arg);
+
+    setToKernelMode();
+
+    return returnValue;
 }
 
 
@@ -215,6 +221,12 @@ void checkKernelMode(char* name){
 
 void setToUserMode() {
     int result = USLOSS_PsrSet(USLOSS_PsrGet() & ~USLOSS_PSR_CURRENT_MODE);
+    result++;
+}
+
+
+void setToKernelMode() {
+    int result = USLOSS_PsrSet(USLOSS_PsrGet() | USLOSS_PSR_CURRENT_MODE);
     result++;
 }
 

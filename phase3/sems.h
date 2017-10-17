@@ -41,6 +41,7 @@ void    terminateReal(int status);
 void initializeProcessTable();
 void checkKernelMode(char* name);
 void setToUserMode();
+void setToKernelMode();
 void addToChildList(int parentPid, int childPid);
 
 #endif
