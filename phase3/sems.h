@@ -58,6 +58,10 @@ long    semPReal(int semNumber);
 void    semV(USLOSS_Sysargs* args);
 long    semVReal(int semNumber);
 
+void    getPid(USLOSS_Sysargs* args);
+long    getPidReal();
+
+
 
 // helper functions
 void initializeProcessTable();

@@ -272,6 +272,21 @@ long semVReal(int semNumber) {
 
 
 
+void getPid(USLOSS_Sysargs* args) {
+    args->arg1 = (void*) getPidReal();
+
+    setToUserMode();
+    return;
+}
+
+
+long getPidReal() {
+    return getpid();
+}
+
+
+
+
 
 
 
@@ -315,7 +330,7 @@ void initializeSysCallTable() {
     // systemCallVec[SYS_SEMFREE]      = nullsys3;
     // systemCallVec[SYS_GETTIMEOFDAY] = nullsys3;
     // systemCallVec[SYS_CPUTIME]      = nullsys3;
-    // systemCallVec[SYS_GETPID]       = nullsys3;
+    systemCallVec[SYS_GETPID]       = getPid;
 }
 
 
