@@ -12,13 +12,13 @@ int (* startFuncGlobal) (char *);
 int parentPidGlobal;
 
 process processTable[MAXPROC];
+semaphore semTable[MAXSEMS];
 
 
 int start2(char *arg)
 {
     int pid;
     int status;
-    int i;
     /*
      * Check kernel mode here.
      */
@@ -29,24 +29,9 @@ int start2(char *arg)
      */
     // process table
     initializeProcessTable();
-
-
-    // semaphore table
-
-    // sysCall table
-    for (i = 0; i < USLOSS_MAX_SYSCALLS; i++) {
-        systemCallVec[i] = nullsys3;
-    }
-    systemCallVec[SYS_SPAWN]        = spawn;
-    systemCallVec[SYS_WAIT]         = wait;
-    systemCallVec[SYS_TERMINATE]    = terminate;
-    // systemCallVec[SYS_SEMCREATE]    = nullsys3;
-    // systemCallVec[SYS_SEMP]         = nullsys3;
-    // systemCallVec[SYS_SEMV]         = nullsys3;
-    // systemCallVec[SYS_SEMFREE]      = nullsys3;
-    // systemCallVec[SYS_GETTIMEOFDAY] = nullsys3;
-    // systemCallVec[SYS_CPUTIME]      = nullsys3;
-    // systemCallVec[SYS_GETPID]       = nullsys3;
+    initializeSemaphoreTable();
+    initializeSysCallTable();
+    
 
 
     /*
@@ -107,6 +92,7 @@ void spawn(USLOSS_Sysargs* args) {
     return;
 }
 
+
 long spawnReal(char* name, int(*startFunc)(char *), void* arg, int stackSize, int priority) {
     int pid = -1;
     
@@ -127,6 +113,7 @@ long spawnReal(char* name, int(*startFunc)(char *), void* arg, int stackSize, in
     return pid;
 }
 
+
 int spawnLaunch(char* arg) {
     int returnValue =-1;
 
@@ -141,10 +128,12 @@ int spawnLaunch(char* arg) {
     setToUserMode();
     returnValue = startFuncGlobal(arg);
 
-    setToKernelMode();
+    processTable[getpid() % MAXPROC].status = TERMINATED;
 
+    setToKernelMode();
     return returnValue;
 }
+
 
 
 
@@ -153,13 +142,16 @@ void wait(USLOSS_Sysargs* args) {
 
     args->arg1 = (void*) waitReal((int*) &status);
     args->arg2 = (void*) status;
+
     setToUserMode();
     return;
 }
 
+
 long waitReal(int* status) {
     return join(status);
 }
+
 
 
 
@@ -168,6 +160,7 @@ void terminate(USLOSS_Sysargs* args) {
     setToUserMode();
     return;
 }
+
 
 void terminateReal(int status) {
     int pid = -1;
@@ -194,6 +187,92 @@ void terminateReal(int status) {
 
 
 
+void semCreate(USLOSS_Sysargs* args) {
+    long status = -1;
+
+    args->arg1 = (void*) semCreateReal((int) args->arg1, &status);
+    args->arg4 = (void*) status;
+
+    setToUserMode();
+    return;
+}
+
+
+long semCreateReal(int value, long* status) {
+    int index = getNextSemIndex();
+
+    if (index != -1 && value >= 0) {
+        semTable[index].status = USED;
+        semTable[index].value = value;
+        *status = VALID;
+    }
+    else {
+        *status = INVALID;
+    }
+
+    return index;
+}
+
+
+
+
+void semP(USLOSS_Sysargs* args) {
+    long status = -1;
+
+    status = semPReal((int) args->arg1);
+    args->arg4 = (void*) status;
+
+    setToUserMode();
+    return;
+}
+
+
+long semPReal(int semNumber) {
+    if (semNumber < 0 || semNumber >= MAXSEMS || semTable[semNumber].status == UNUSED) return INVALID;
+
+    else if (semTable[semNumber].value > 0) {
+        semTable[semNumber].value--;
+        return VALID;
+    }
+    
+    else {
+        while (semTable[semNumber].value == 0) {
+            MboxReceive(semTable[semNumber].mboxID, NULL, 0);
+        }
+        
+        semTable[semNumber].value--;
+        return VALID;
+    }
+}
+
+
+
+
+void semV(USLOSS_Sysargs* args) {
+    long status = -1;
+
+    status = semVReal((int) args->arg1);
+    args->arg4 = (void*) status;
+
+    setToUserMode();
+    return;
+}
+
+
+long semVReal(int semNumber) {
+    if (semNumber < 0 || semNumber >= MAXSEMS || semTable[semNumber].status == UNUSED) return INVALID;
+
+    semTable[semNumber].value++;
+
+    MboxCondSend(semTable[semNumber].mboxID, NULL, 0);
+
+    return VALID;
+}
+
+
+
+
+
 
 
 
@@ -208,6 +287,35 @@ void initializeProcessTable() {
         processTable[i].nextSiblingPtr = NULL;
         processTable[i].entryMade = 0;
     }
+}
+
+
+void initializeSemaphoreTable() {
+    int i = 0;
+
+    for (i = 0; i < MAXSEMS; i++) {
+        semTable[i].status = UNUSED;
+        semTable[i].mboxID = MboxCreate(0,0);
+    }
+}
+
+
+void initializeSysCallTable() {
+    int i = 0;
+
+    for (i = 0; i < USLOSS_MAX_SYSCALLS; i++) {
+        systemCallVec[i] = nullsys3;
+    }
+    systemCallVec[SYS_SPAWN]        = spawn;
+    systemCallVec[SYS_WAIT]         = wait;
+    systemCallVec[SYS_TERMINATE]    = terminate;
+    systemCallVec[SYS_SEMCREATE]    = semCreate;
+    systemCallVec[SYS_SEMP]         = semP;
+    systemCallVec[SYS_SEMV]         = semV;
+    // systemCallVec[SYS_SEMFREE]      = nullsys3;
+    // systemCallVec[SYS_GETTIMEOFDAY] = nullsys3;
+    // systemCallVec[SYS_CPUTIME]      = nullsys3;
+    // systemCallVec[SYS_GETPID]       = nullsys3;
 }
 
 
@@ -244,5 +352,16 @@ void addToChildList(int parentPid, int childPid) {
     }
 
     current->nextSiblingPtr = &processTable[childPid % MAXPROC];
+}
+
+
+int getNextSemIndex() {
+    int i = 0;
+
+    for (i = 0; i < MAXSEMS; i++) {
+        if (semTable[i].status == UNUSED) return i;
+    }
+
+    return -1;
 }
 
