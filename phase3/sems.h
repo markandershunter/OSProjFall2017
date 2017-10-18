@@ -6,8 +6,9 @@
 #define USED        1
 #define TERMINATED  2
 
-#define VALID       0
-#define INVALID     -1
+#define VALID               0
+#define INVALID             -1
+#define PROCESSES_BLOCKED   1
 
 typedef struct process  process;
 typedef struct process* procPtr;
@@ -19,14 +20,16 @@ struct process {
     procPtr         parentPtr;
     procPtr         childPtr;
     procPtr         nextSiblingPtr;
+    procPtr         nextSemBlockedSiblingPtr;   // other processes blocked on the same semaphore
     int             entryMade;      // has the process table entry been made yet
+    int             mboxID;         // every semaphore has a mailbox so that it can block processes
 };
 
 
 struct semaphore {
-    int     status;
-    int     value;
-    int     mboxID;         // every semaphore has a mailbox so that it can block processes
+    int         status;
+    int         value;
+    procPtr     blockedProcessPtr; // pointer to the first process blocked on the semaphore
 };
 
 
@@ -48,6 +51,7 @@ long    waitReal(int* status);
 
 void    terminate(USLOSS_Sysargs* args);
 void    terminateReal(int status);
+void    terminateForSemFree(int pid);
 
 void    semCreate(USLOSS_Sysargs* args);
 long    semCreateReal(int value, long* status);
@@ -58,6 +62,13 @@ long    semPReal(int semNumber);
 void    semV(USLOSS_Sysargs* args);
 long    semVReal(int semNumber);
 
+void    semFree(USLOSS_Sysargs* args);
+long    semFreeReal(int semNumber);
+
+void    getPid(USLOSS_Sysargs* args);
+long    getPidReal();
+
+
 
 // helper functions
 void initializeProcessTable();
@@ -67,6 +78,7 @@ void checkKernelMode(char* name);
 void setToUserMode();
 void setToKernelMode();
 void addToChildList(int parentPid, int childPid);
+void addToBlockedList(int semNumber);
 int getNextSemIndex();
 
 #endif

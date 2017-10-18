@@ -183,10 +183,17 @@ int SemV(long semaphore)
  *  Arguments:
  *
  */
-int SemFree(int semaphore)
+int SemFree(long semaphore)
 {
-    int something = 0;
-    return something;
+    USLOSS_Sysargs sysArg;
+    
+    CHECKMODE;
+    sysArg.number = SYS_SEMFREE;
+    sysArg.arg1 = (void*) semaphore;
+
+    USLOSS_Syscall(&sysArg);
+
+    return (int) sysArg.arg4;
 } /* end of SemFree */
 
 
@@ -226,6 +233,14 @@ void CPUTime(int *cpu)
  */
 void GetPID(int *pid)                           
 {
+    USLOSS_Sysargs sysArg;
+    
+    CHECKMODE;
+    sysArg.number = SYS_GETPID;
+
+    USLOSS_Syscall(&sysArg);
+
+    *pid = (int) sysArg.arg1;
 } /* end of GetPID */
 
 /* end libuser.c */
