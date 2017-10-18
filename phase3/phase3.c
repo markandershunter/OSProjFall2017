@@ -185,27 +185,27 @@ void terminateReal(int status) {
 }
 
 
-void terminateForSemFree(int pid) {
-    int childPid = -1;
-    int runStatus = -1;
+// void terminateForSemFree(int pid) {
+//     int childPid = -1;
+//     int runStatus = -1;
 
-    procPtr child = processTable[pid % MAXPROC].childPtr;
+//     procPtr child = processTable[pid % MAXPROC].childPtr;
 
-    while (child != NULL) {
-        childPid = child->pid;
-        runStatus = child->status;
-        child = child->nextSiblingPtr;
+//     while (child != NULL) {
+//         childPid = child->pid;
+//         runStatus = child->status;
+//         child = child->nextSiblingPtr;
 
-        if (runStatus != TERMINATED) {
-            zap(childPid);
-        }
-    }
+//         if (runStatus != TERMINATED) {
+//             zap(childPid);
+//         }
+//     }
 
-    processTable[pid % MAXPROC].status = TERMINATED;
-    zap(pid);
+//     processTable[pid % MAXPROC].status = TERMINATED;
+//     zap(pid);
 
-    return;
-}
+//     return;
+// }
 
 
 
@@ -262,6 +262,10 @@ long semPReal(int semNumber) {
         addToBlockedList(semNumber);
         MboxReceive(processTable[getpid() % MAXPROC].mboxID, NULL, 0);
         
+        if (semTable[semNumber].status == FREED) {
+            terminateReal(TERMINATED);
+        }
+
         semTable[semNumber].value--;
         return VALID;
     }
@@ -282,14 +286,16 @@ void semV(USLOSS_Sysargs* args) {
 
 
 long semVReal(int semNumber) {
-    if (semNumber < 0 || semNumber >= MAXSEMS || semTable[semNumber].status != USED) return INVALID;
+    procPtr nextBlocked = NULL;
+
+    if (semNumber < 0 || semNumber >= MAXSEMS || semTable[semNumber].status == UNUSED) return INVALID;
 
     semTable[semNumber].value++;
 
-    MboxCondSend(processTable[semTable[semNumber].blockedProcessPtr->pid % MAXPROC].mboxID, NULL, 0);
-
     if (semTable[semNumber].blockedProcessPtr != NULL) {
-        semTable[semNumber].blockedProcessPtr = semTable[semNumber].blockedProcessPtr->nextSemBlockedSiblingPtr;
+        nextBlocked = semTable[semNumber].blockedProcessPtr->nextSemBlockedSiblingPtr;
+        MboxCondSend(processTable[semTable[semNumber].blockedProcessPtr->pid % MAXPROC].mboxID, NULL, 0);
+        semTable[semNumber].blockedProcessPtr = nextBlocked;
     }
 
     return VALID;
@@ -308,18 +314,19 @@ void semFree(USLOSS_Sysargs* args) {
 
 long semFreeReal(int semNumber) {
     procPtr current = NULL;
-    int pid = -1;
 
     if (semNumber < 0 || semNumber >= MAXSEMS || semTable[semNumber].status != USED) return INVALID;
 
     if (semTable[semNumber].blockedProcessPtr != NULL) {
-        current = semTable[semNumber].blockedProcessPtr;
+        current = semTable[semNumber].blockedProcessPtr; // first blocked process
+        semTable[semNumber].status = FREED;
 
+        // V on each blocked process. They will each wake up in their P
+        // operation, see that the status is FREED, and terminate themselves
         while (current != NULL) {
-            pid = current->pid;
-            current = current->nextSemBlockedSiblingPtr;
-
-            terminateForSemFree(pid);
+            // USLOSS_Console("%d\n", current->pid);
+            semVReal(semNumber);
+            current = semTable[semNumber].blockedProcessPtr;
         }
 
         return PROCESSES_BLOCKED;
@@ -429,6 +436,14 @@ void addToChildList(int parentPid, int childPid) {
         }
 
         current->nextSiblingPtr = &processTable[childPid % MAXPROC];
+    }
+}
+
+void printBlockedList(procPtr p) {
+    USLOSS_Console("starting...\n");
+    while (p != NULL) {
+        USLOSS_Console("%d\n", p->pid);
+        p = p->nextSemBlockedSiblingPtr;
     }
 }
 
