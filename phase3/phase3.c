@@ -259,9 +259,8 @@ long semPReal(int semNumber) {
     }
     
     else {
-        while (semTable[semNumber].value == 0) {
-            MboxReceive(semTable[semNumber].mboxID, NULL, 0);
-        }
+        addToBlockedList(semNumber);
+        MboxReceive(processTable[getpid() % MAXPROC].mboxID, NULL, 0);
         
         semTable[semNumber].value--;
         return VALID;
@@ -287,7 +286,11 @@ long semVReal(int semNumber) {
 
     semTable[semNumber].value++;
 
-    MboxCondSend(semTable[semNumber].mboxID, NULL, 0);
+    MboxCondSend(processTable[semTable[semNumber].blockedProcessPtr->pid % MAXPROC].mboxID, NULL, 0);
+
+    if (semTable[semNumber].blockedProcessPtr != NULL) {
+        semTable[semNumber].blockedProcessPtr = semTable[semNumber].blockedProcessPtr->nextSemBlockedSiblingPtr;
+    }
 
     return VALID;
 }
@@ -360,6 +363,7 @@ void initializeProcessTable() {
         processTable[i].nextSiblingPtr = NULL;
         processTable[i].nextSemBlockedSiblingPtr = NULL;
         processTable[i].entryMade = 0;
+        processTable[i].mboxID = MboxCreate(0,0);
     }
 }
 
@@ -369,7 +373,6 @@ void initializeSemaphoreTable() {
 
     for (i = 0; i < MAXSEMS; i++) {
         semTable[i].status = UNUSED;
-        semTable[i].mboxID = MboxCreate(0,0);
         semTable[i].blockedProcessPtr = NULL;
     }
 }
@@ -419,14 +422,30 @@ void addToChildList(int parentPid, int childPid) {
 
     if (current == NULL) {
         processTable[parentPid % MAXPROC].childPtr = &processTable[childPid % MAXPROC];
-        return;
     }
+    else {
+        while (current->nextSiblingPtr != NULL) {
+            current = current->nextSiblingPtr;
+        }
 
-    while (current->nextSiblingPtr != NULL) {
-        current = current->nextSiblingPtr;
+        current->nextSiblingPtr = &processTable[childPid % MAXPROC];
     }
+}
 
-    current->nextSiblingPtr = &processTable[childPid % MAXPROC];
+
+void addToBlockedList(semNumber) {
+    procPtr current = semTable[semNumber].blockedProcessPtr;
+
+    if (current == NULL) {
+        semTable[semNumber].blockedProcessPtr = &processTable[getpid() % MAXPROC];
+    }
+    else {
+        while (current->nextSemBlockedSiblingPtr != NULL) {
+            current = current->nextSemBlockedSiblingPtr;
+        }
+
+        current->nextSemBlockedSiblingPtr = &processTable[getpid() % MAXPROC];
+    }
 }
 
 

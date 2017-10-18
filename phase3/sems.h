@@ -22,13 +22,13 @@ struct process {
     procPtr         nextSiblingPtr;
     procPtr         nextSemBlockedSiblingPtr;   // other processes blocked on the same semaphore
     int             entryMade;      // has the process table entry been made yet
+    int             mboxID;         // every semaphore has a mailbox so that it can block processes
 };
 
 
 struct semaphore {
     int         status;
     int         value;
-    int         mboxID;         // every semaphore has a mailbox so that it can block processes
     procPtr     blockedProcessPtr; // pointer to the first process blocked on the semaphore
 };
 
@@ -78,6 +78,7 @@ void checkKernelMode(char* name);
 void setToUserMode();
 void setToKernelMode();
 void addToChildList(int parentPid, int childPid);
+void addToBlockedList(int semNumber);
 int getNextSemIndex();
 
 #endif
