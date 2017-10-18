@@ -5,6 +5,7 @@
 #define UNUSED      0
 #define USED        1
 #define TERMINATED  2
+#define FREED       3
 
 #define VALID               0
 #define INVALID             -1
@@ -78,6 +79,7 @@ void checkKernelMode(char* name);
 void setToUserMode();
 void setToKernelMode();
 void addToChildList(int parentPid, int childPid);
+void printBlockedList(procPtr p);
 void addToBlockedList(int semNumber);
 int getNextSemIndex();
 
