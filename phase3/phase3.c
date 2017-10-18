@@ -185,29 +185,6 @@ void terminateReal(int status) {
 }
 
 
-// void terminateForSemFree(int pid) {
-//     int childPid = -1;
-//     int runStatus = -1;
-
-//     procPtr child = processTable[pid % MAXPROC].childPtr;
-
-//     while (child != NULL) {
-//         childPid = child->pid;
-//         runStatus = child->status;
-//         child = child->nextSiblingPtr;
-
-//         if (runStatus != TERMINATED) {
-//             zap(childPid);
-//         }
-//     }
-
-//     processTable[pid % MAXPROC].status = TERMINATED;
-//     zap(pid);
-
-//     return;
-// }
-
-
 
 
 void semCreate(USLOSS_Sysargs* args) {
@@ -340,6 +317,40 @@ long semFreeReal(int semNumber) {
 
 
 
+void getTimeOfDay(USLOSS_Sysargs* args) {
+    args->arg1 = (void*) getTimeOfDayReal();
+
+    setToUserMode();
+    return;
+}
+
+
+long getTimeOfDayReal() {
+    int tod = 0;
+    int unused = 0;
+
+    unused = USLOSS_DeviceInput(USLOSS_CLOCK_DEV, 0, &tod);
+    return tod;
+}
+
+
+
+
+void cpuTime(USLOSS_Sysargs* args) {
+    args->arg1 = (void*) cpuTimeReal();
+
+    setToUserMode();
+    return;
+}
+
+
+long cpuTimeReal() {
+    return readtime();
+}
+
+
+
+
 void getPid(USLOSS_Sysargs* args) {
     args->arg1 = (void*) getPidReal();
 
@@ -398,8 +409,8 @@ void initializeSysCallTable() {
     systemCallVec[SYS_SEMP]         = semP;
     systemCallVec[SYS_SEMV]         = semV;
     systemCallVec[SYS_SEMFREE]      = semFree;
-    // systemCallVec[SYS_GETTIMEOFDAY] = nullsys3;
-    // systemCallVec[SYS_CPUTIME]      = nullsys3;
+    systemCallVec[SYS_GETTIMEOFDAY] = getTimeOfDay;
+    systemCallVec[SYS_CPUTIME]      = cpuTime;
     systemCallVec[SYS_GETPID]       = getPid;
 }
 

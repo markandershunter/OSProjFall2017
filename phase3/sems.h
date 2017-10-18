@@ -66,6 +66,12 @@ long    semVReal(int semNumber);
 void    semFree(USLOSS_Sysargs* args);
 long    semFreeReal(int semNumber);
 
+void    getTimeOfDay(USLOSS_Sysargs* args);
+long    getTimeOfDayReal();
+
+void    cpuTime(USLOSS_Sysargs* args);
+long    cpuTimeReal();
+
 void    getPid(USLOSS_Sysargs* args);
 long    getPidReal();
 
