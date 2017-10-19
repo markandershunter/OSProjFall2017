@@ -77,9 +77,9 @@ int Wait(int *pid, int *status)
 
     USLOSS_Syscall(&sysArg);
 
-    *pid = (int) sysArg.arg1;
-    *status = (int) sysArg.arg2;
-    return (int) sysArg.arg4;
+    *pid = (long) sysArg.arg1;
+    *status = (long) sysArg.arg2;
+    return (long) sysArg.arg4;
     
 } /* end of Wait */
 
@@ -126,8 +126,8 @@ int SemCreate(long value, int *semaphore)
 
     USLOSS_Syscall(&sysArg);
 
-    *semaphore = (int) sysArg.arg1;
-    return (int) sysArg.arg4;
+    *semaphore = (long) sysArg.arg1;
+    return (long) sysArg.arg4;
 } /* end of SemCreate */
 
 
@@ -149,7 +149,7 @@ int SemP(long semaphore)
 
     USLOSS_Syscall(&sysArg);
 
-    return (int) sysArg.arg4;
+    return (long) sysArg.arg4;
 } /* end of SemP */
 
 
@@ -171,7 +171,7 @@ int SemV(long semaphore)
 
     USLOSS_Syscall(&sysArg);
 
-    return (int) sysArg.arg4;
+    return (long) sysArg.arg4;
 } /* end of SemV */
 
 
@@ -193,7 +193,7 @@ int SemFree(long semaphore)
 
     USLOSS_Syscall(&sysArg);
 
-    return (int) sysArg.arg4;
+    return (long) sysArg.arg4;
 } /* end of SemFree */
 
 
@@ -214,7 +214,7 @@ void GetTimeofDay(int *tod)
 
     USLOSS_Syscall(&sysArg);
 
-    *tod = (int) sysArg.arg1;
+    *tod = (long) sysArg.arg1;
 } /* end of GetTimeofDay */
 
 
@@ -235,7 +235,7 @@ void CPUTime(int *cpu)
 
     USLOSS_Syscall(&sysArg);
 
-    *cpu = (int) sysArg.arg1;
+    *cpu = (long) sysArg.arg1;
 } /* end of CPUTime */
 
 
@@ -256,7 +256,7 @@ void GetPID(int *pid)
 
     USLOSS_Syscall(&sysArg);
 
-    *pid = (int) sysArg.arg1;
+    *pid = (long) sysArg.arg1;
 } /* end of GetPID */
 
 /* end libuser.c */
