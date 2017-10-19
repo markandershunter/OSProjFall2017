@@ -87,13 +87,13 @@ void nullsys3() {
 
 void spawn(USLOSS_Sysargs* args) {
     // check for illegal values
-    args->arg1 = (void*) spawnReal(args->arg5, args->arg1, args->arg2, (int)args->arg3, (int)args->arg4);
+    args->arg1 = (void*) spawnReal(args->arg5, args->arg1, args->arg2, (long)args->arg3, (long)args->arg4);
     setToUserMode();
     return;
 }
 
 
-long spawnReal(char* name, int(*startFunc)(char *), void* arg, int stackSize, int priority) {
+long spawnReal(char* name, int(*startFunc)(char *), void* arg, long stackSize, long priority) {
     int pid = -1;
     
     startFuncGlobal = startFunc;
