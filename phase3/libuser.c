@@ -50,8 +50,8 @@ int Spawn(char *name, int (*func)(char *), char *arg, long stack_size,
 
     USLOSS_Syscall(&sysArg);
 
-    *pid = (int) sysArg.arg1;
-    return (int) sysArg.arg4;
+    *pid = (long) sysArg.arg1;
+    return (long) sysArg.arg4;
 } /* end of Spawn */
 
 

@@ -70,6 +70,8 @@ int start2(char *arg)
      */
     pid = waitReal(&status);
 
+    pid++; // unused
+
     return 0;
 
 } /* start2 */
@@ -160,13 +162,13 @@ long waitReal(int* status) {
 
 
 void terminate(USLOSS_Sysargs* args) {
-    terminateReal((int)args->arg1);
+    terminateReal((long)args->arg1);
     setToUserMode();
     return;
 }
 
 
-void terminateReal(int status) {
+void terminateReal(long status) {
     int pid = -1;
     int runStatus = -1;
 
@@ -194,7 +196,7 @@ void terminateReal(int status) {
 void semCreate(USLOSS_Sysargs* args) {
     long status = -1;
 
-    args->arg1 = (void*) semCreateReal((int) args->arg1, &status);
+    args->arg1 = (void*) semCreateReal((long) args->arg1, &status);
     args->arg4 = (void*) status;
 
     setToUserMode();
@@ -202,7 +204,7 @@ void semCreate(USLOSS_Sysargs* args) {
 }
 
 
-long semCreateReal(int value, long* status) {
+long semCreateReal(long value, long* status) {
     int index = getNextSemIndex();
 
     if (index != -1 && value >= 0) {
@@ -223,7 +225,7 @@ long semCreateReal(int value, long* status) {
 void semP(USLOSS_Sysargs* args) {
     long status = -1;
 
-    status = semPReal((int) args->arg1);
+    status = semPReal((long) args->arg1);
     args->arg4 = (void*) status;
 
     setToUserMode();
@@ -231,7 +233,7 @@ void semP(USLOSS_Sysargs* args) {
 }
 
 
-long semPReal(int semNumber) {
+long semPReal(long semNumber) {
     if (semNumber < 0 || semNumber >= MAXSEMS || semTable[semNumber].status == UNUSED) return INVALID;
 
     else if (semTable[semNumber].value > 0) {
@@ -258,7 +260,7 @@ long semPReal(int semNumber) {
 void semV(USLOSS_Sysargs* args) {
     long status = -1;
 
-    status = semVReal((int) args->arg1);
+    status = semVReal((long) args->arg1);
     args->arg4 = (void*) status;
 
     setToUserMode();
@@ -266,7 +268,7 @@ void semV(USLOSS_Sysargs* args) {
 }
 
 
-long semVReal(int semNumber) {
+long semVReal(long semNumber) {
     procPtr nextBlocked = NULL;
 
     if (semNumber < 0 || semNumber >= MAXSEMS || semTable[semNumber].status == UNUSED) return INVALID;
@@ -286,14 +288,14 @@ long semVReal(int semNumber) {
 
 
 void semFree(USLOSS_Sysargs* args) {
-    args->arg4 = (void*) semFreeReal((int) args->arg1);
+    args->arg4 = (void*) semFreeReal((long) args->arg1);
 
     setToUserMode();
     return;
 }
 
 
-long semFreeReal(int semNumber) {
+long semFreeReal(long semNumber) {
     procPtr current = NULL;
 
     if (semNumber < 0 || semNumber >= MAXSEMS || semTable[semNumber].status != USED) return INVALID;
@@ -333,6 +335,8 @@ long getTimeOfDayReal() {
     int unused = 0;
 
     unused = USLOSS_DeviceInput(USLOSS_CLOCK_DEV, 0, &tod);
+    unused++;
+
     return tod;
 }
 
@@ -462,7 +466,7 @@ void printBlockedList(procPtr p) {
 }
 
 
-void addToBlockedList(semNumber) {
+void addToBlockedList(int semNumber) {
     procPtr current = semTable[semNumber].blockedProcessPtr;
 
     if (current == NULL) {
