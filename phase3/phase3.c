@@ -133,10 +133,10 @@ int spawnLaunch(char* arg) {
 
     setToUserMode();
     returnValue = startFuncGlobal(arg);
-
+    setToKernelMode();
+    
     processTable[getpid() % MAXPROC].status = TERMINATED;
 
-    setToKernelMode();
     return returnValue;
 }
 
