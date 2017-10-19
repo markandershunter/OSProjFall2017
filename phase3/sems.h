@@ -52,20 +52,19 @@ void    wait(USLOSS_Sysargs* args);
 long    waitReal(int* status);
 
 void    terminate(USLOSS_Sysargs* args);
-void    terminateReal(int status);
-void    terminateForSemFree(int pid);
+void    terminateReal(long status);
 
 void    semCreate(USLOSS_Sysargs* args);
-long    semCreateReal(int value, long* status);
+long    semCreateReal(long value, long* status);
 
 void    semP(USLOSS_Sysargs* args);
-long    semPReal(int semNumber);
+long    semPReal(long semNumber);
 
 void    semV(USLOSS_Sysargs* args);
-long    semVReal(int semNumber);
+long    semVReal(long semNumber);
 
 void    semFree(USLOSS_Sysargs* args);
-long    semFreeReal(int semNumber);
+long    semFreeReal(long semNumber);
 
 void    getTimeOfDay(USLOSS_Sysargs* args);
 long    getTimeOfDayReal();
