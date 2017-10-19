@@ -4,6 +4,7 @@
 
 #define UNUSED      0
 #define USED        1
+#define TERMINATED_FROM_SEMFREE     1
 #define TERMINATED  2
 #define FREED       3
 

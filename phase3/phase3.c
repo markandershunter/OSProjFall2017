@@ -117,6 +117,10 @@ long spawnReal(char* name, int(*startFunc)(char *), void* arg, int stackSize, in
 int spawnLaunch(char* arg) {
     int returnValue =-1;
 
+    if (isZapped()) {
+        quit(TERMINATED);
+    }
+
     if (!processTable[getpid() % MAXPROC].entryMade) {
         processTable[getpid() % MAXPROC].pid = getpid();
         processTable[getpid() % MAXPROC].entryMade = 1;
@@ -240,7 +244,7 @@ long semPReal(int semNumber) {
         MboxReceive(processTable[getpid() % MAXPROC].mboxID, NULL, 0);
         
         if (semTable[semNumber].status == FREED) {
-            terminateReal(TERMINATED);
+            terminateReal(TERMINATED_FROM_SEMFREE);
         }
 
         semTable[semNumber].value--;
@@ -301,7 +305,6 @@ long semFreeReal(int semNumber) {
         // V on each blocked process. They will each wake up in their P
         // operation, see that the status is FREED, and terminate themselves
         while (current != NULL) {
-            // USLOSS_Console("%d\n", current->pid);
             semVReal(semNumber);
             current = semTable[semNumber].blockedProcessPtr;
         }
