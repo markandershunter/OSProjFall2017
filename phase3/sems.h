@@ -45,7 +45,7 @@ int start3(char* arg);
 void    nullsys3();
 
 void    spawn(USLOSS_Sysargs*);
-long    spawnReal(char* name, int(*startFunc)(char *), void* arg, int stackSize, int priority);
+long    spawnReal(char* name, int(*startFunc)(char *), void* arg, long stackSize, long priority);
 int     spawnLaunch(char*);
 
 void    wait(USLOSS_Sysargs* args);
