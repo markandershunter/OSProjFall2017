@@ -25,6 +25,7 @@ struct process {
     procPtr         nextSemBlockedSiblingPtr;   // other processes blocked on the same semaphore
     int             entryMade;      // has the process table entry been made yet
     int             mboxID;         // every semaphore has a mailbox so that it can block processes
+    int             (*startFunc)(char *);
 };
 
 
@@ -74,6 +75,8 @@ long    cpuTimeReal();
 
 void    getPid(USLOSS_Sysargs* args);
 long    getPidReal();
+
+void    cleanProcess(procPtr p);
 
 
 

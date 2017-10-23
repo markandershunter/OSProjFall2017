@@ -31,7 +31,7 @@ int start2(char *arg)
     initializeProcessTable();
     initializeSemaphoreTable();
     initializeSysCallTable();
-    
+
 
 
     /*
@@ -59,7 +59,7 @@ int start2(char *arg)
      * begin executing the function passed to Spawn. spawnLaunch() will
      * need to switch to user-mode before allowing user code to execute.
      * spawnReal() will return to spawn(), which will put the return
-     * values back into the sysargs pointer, switch to user-mode, and 
+     * values back into the sysargs pointer, switch to user-mode, and
      * return to the user code that called Spawn.
      */
     pid = spawnReal("start3", start3, NULL, 4*USLOSS_MIN_STACK, 3);
@@ -97,10 +97,10 @@ void spawn(USLOSS_Sysargs* args) {
 
 long spawnReal(char* name, int(*startFunc)(char *), void* arg, long stackSize, long priority) {
     int pid = -1;
-    
+
     startFuncGlobal = startFunc;
     parentPidGlobal = getpid();
-    
+
     pid = fork1(name, spawnLaunch, arg, stackSize, priority);
 
     if (!processTable[pid % MAXPROC].entryMade) {
@@ -108,9 +108,13 @@ long spawnReal(char* name, int(*startFunc)(char *), void* arg, long stackSize, l
         processTable[pid % MAXPROC].entryMade = 1;
         processTable[pid % MAXPROC].status = USED;
         processTable[pid % MAXPROC].parentPtr = &processTable[getpid() % MAXPROC];
+        processTable[pid % MAXPROC].startFunc = startFunc;
+
         addToChildList(getpid(), pid);
 
     }
+
+    // USLOSS_Console("spawnReal(): process %d spawned\n", pid);
 
     return pid;
 }
@@ -123,18 +127,23 @@ int spawnLaunch(char* arg) {
         quit(TERMINATED);
     }
 
-    if (!processTable[getpid() % MAXPROC].entryMade) {
+    // USLOSS_Console("spawnLaunch(): pid is %d\n", getpid());
+
+
+    if (!processTable[getpid() % MAXPROC].entryMade || processTable[getpid() % MAXPROC].status == TERMINATED) {
         processTable[getpid() % MAXPROC].pid = getpid();
         processTable[getpid() % MAXPROC].entryMade = 1;
         processTable[getpid() % MAXPROC].status = USED;
         processTable[getpid() % MAXPROC].parentPtr = &processTable[parentPidGlobal % MAXPROC];
         addToChildList(parentPidGlobal, getpid());
+    }else{
+        startFuncGlobal = processTable[getpid() % MAXPROC].startFunc;
     }
 
     setToUserMode();
     returnValue = startFuncGlobal(arg);
     setToKernelMode();
-    
+
     processTable[getpid() % MAXPROC].status = TERMINATED;
 
     return returnValue;
@@ -174,17 +183,22 @@ void terminateReal(long status) {
 
     procPtr child = processTable[getpid() % MAXPROC].childPtr;
 
-    while (child != NULL) {
+    while (child != NULL && child->pid > 0) {
         pid = child->pid;
         runStatus = child->status;
-        child = child->nextSiblingPtr;
 
         if (runStatus != TERMINATED) {
+            child->status = TERMINATED;
             zap(pid);
         }
+
+        child = child->nextSiblingPtr;
     }
 
+
     processTable[getpid() % MAXPROC].status = TERMINATED;
+    processTable[getpid() % MAXPROC].childPtr = NULL;
+    processTable[getpid() % MAXPROC].nextSiblingPtr = NULL;
     quit(status);
 
     return;
@@ -240,11 +254,11 @@ long semPReal(long semNumber) {
         semTable[semNumber].value--;
         return VALID;
     }
-    
+
     else {
         addToBlockedList(semNumber);
         MboxReceive(processTable[getpid() % MAXPROC].mboxID, NULL, 0);
-        
+
         if (semTable[semNumber].status == FREED) {
             terminateReal(TERMINATED_FROM_SEMFREE);
         }
@@ -269,16 +283,16 @@ void semV(USLOSS_Sysargs* args) {
 
 
 long semVReal(long semNumber) {
-    procPtr nextBlocked = NULL;
+    int temp_mbox_id = 0;
 
     if (semNumber < 0 || semNumber >= MAXSEMS || semTable[semNumber].status == UNUSED) return INVALID;
 
     semTable[semNumber].value++;
 
     if (semTable[semNumber].blockedProcessPtr != NULL) {
-        nextBlocked = semTable[semNumber].blockedProcessPtr->nextSemBlockedSiblingPtr;
-        MboxCondSend(processTable[semTable[semNumber].blockedProcessPtr->pid % MAXPROC].mboxID, NULL, 0);
-        semTable[semNumber].blockedProcessPtr = nextBlocked;
+        temp_mbox_id = processTable[semTable[semNumber].blockedProcessPtr->pid % MAXPROC].mboxID;
+        semTable[semNumber].blockedProcessPtr = semTable[semNumber].blockedProcessPtr->nextSemBlockedSiblingPtr;
+        MboxCondSend(temp_mbox_id, NULL, 0);
     }
 
     return VALID;
@@ -389,6 +403,7 @@ void initializeProcessTable() {
         processTable[i].nextSemBlockedSiblingPtr = NULL;
         processTable[i].entryMade = 0;
         processTable[i].mboxID = MboxCreate(0,0);
+        processTable[i].startFunc = NULL;
     }
 }
 
@@ -491,4 +506,3 @@ int getNextSemIndex() {
 
     return -1;
 }
-

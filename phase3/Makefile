@@ -17,7 +17,7 @@ HDRS = sems.h
 
 INCLUDE = ${PREFIX}/include
 
-CFLAGS = -Wall -g -std=gnu99 -I. -I${INCLUDE} 
+CFLAGS = -Wall -g -std=gnu99 -I. -I${INCLUDE}
 
 UNAME := $(shell uname -s)
 
@@ -30,13 +30,13 @@ LDFLAGS += -L. -L${PREFIX}/lib
 TESTDIR = testcases
 TESTS = test00 test01 test02 test03 test04 test05 test06 test07 test08 \
         test09 test10 test11 test12 test13 test14 test15 test16 test17 \
-        test18 test19 test20 
+        test18 test19 test20 test21 test22 test23 test24 test25
 
 LIBS = -l$(PHASE2LIB) -l$(PHASE1LIB) -lusloss3.6 -l$(PHASE1LIB) -l$(PHASE2LIB) -lphase3
 
 
 $(TARGET):	$(COBJS)
-		$(AR) -r $@ $(COBJS) 
+		$(AR) -r $@ $(COBJS)
 
 $(TESTS):	$(TARGET) p1.o
 	$(CC) $(CFLAGS) -c $(TESTDIR)/$@.c
@@ -50,4 +50,3 @@ phase3.o:	sems.h
 
 submit: $(CSRCS) $(HDRS) Makefile
 	tar cvzf phase3.tgz $(CSRCS) $(HDRS) Makefile
-
