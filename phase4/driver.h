@@ -24,5 +24,6 @@ extern void initializeProcessTable();
 extern void nullsys3();
 
 extern void addToSleepQ(int pid);
+extern void removeFromSleepQ(int pid);
 
 #endif
