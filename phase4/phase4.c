@@ -33,6 +33,8 @@ start3(void)
      * Check kernel mode here.
      */
 
+
+
      if (!(USLOSS_PsrGet() & USLOSS_PSR_CURRENT_MODE)) {
          USLOSS_Console("start3(): called while in user mode. Halting....\n");
          USLOSS_Halt(1);
@@ -41,7 +43,7 @@ start3(void)
      initializeSysCallTable();
      initializeProcessTable();
      sleepQ = NULL;
-     sleepMBoxID = MboxCreate(MAXPROC, 4);
+    
 
     /*
      * Create clock device driver
@@ -90,9 +92,7 @@ start3(void)
      * I'm assuming kernel-mode versions of the system calls
      * with lower-case first letters, as shown in provided_prototypes.h
      */
-    // pid =
     spawnReal("start4", start4, NULL, 4 * USLOSS_MIN_STACK, 3);
-    // pid =
     waitReal(&status);
 
     /*
@@ -112,6 +112,8 @@ static int ClockDriver(char *arg)
     int currTime;
     procPtr ptr;
 
+    sleepMBoxID = MboxCreate(1, 0);
+
     // Let the parent know we are running and enable interrupts.
     semvReal(semRunning);
     int i = USLOSS_PsrSet(USLOSS_PsrGet() | USLOSS_PSR_CURRENT_INT);
@@ -127,19 +129,26 @@ static int ClockDriver(char *arg)
         * Compute the current time and wake up any processes
         * whose time has come.
         */
+        MboxSend(sleepMBoxID, NULL, 0);
+
         ptr = sleepQ;
         gettimeofdayReal(&currTime);
 
         while(ptr != NULL){
             if(ptr->sleepEndTime < currTime){
-                USLOSS_Console("match made %d %d\n", ptr->sleepEndTime, currTime);
                 removeFromSleepQ(ptr->pid);
                 MboxSend(ptr->mbox_id, NULL, 0);
             }
             ptr = ptr->nextSleeperProc;
         }
+
+        result = MboxReceive(sleepMBoxID, NULL, 0);
+
+        if (result < 0) {
+            quit(result);
+        }
     }
-    terminateReal(0);
+
     return 0;
 }
 
@@ -150,31 +159,33 @@ static int ClockDriver(char *arg)
 // }
 
 void sleep(USLOSS_Sysargs* args){
-    // args->arg1 = (void *) (intptr_t) sleepReal((intptr_t) args->arg1);
-    sleepReal((int)args->arg1);
-    return;
+    int result = sleepReal((int)(long)args->arg1);
+
+    args->arg4 = (void*) (long) result;
 }
 
 int sleepReal(int seconds){
     int pid = 0;
     int time_ = 0;
-    void *msg = NULL;
-
 
     // check for valid seconds value
     if(seconds < 0) return INVALID_SLEEP_TIME;
 
 
     gettimeofdayReal(&time_);
-    USLOSS_Console("sleepReal(): Current time is %d\n", time_);
+
     pid = getpid();
 
     processTable[pid % MAXPROC].pid = pid;
     processTable[pid % MAXPROC].startTime = time_;
     processTable[pid % MAXPROC].sleepEndTime = time_ + (1000000 * seconds);
 
+    MboxSend(sleepMBoxID, NULL, 0);
     addToSleepQ(pid);
-    MboxReceive(processTable[pid % MAXPROC].mbox_id, msg, 0);
+    MboxReceive(sleepMBoxID, NULL, 0);
+
+
+    MboxReceive(processTable[pid % MAXPROC].mbox_id, NULL, 0);
 
     return 0;
 }
@@ -185,11 +196,6 @@ void setToUserMode() {
 }
 
 void initializeSysCallTable() {
-    int i = 0;
-
-    for (i = 0; i < USLOSS_MAX_SYSCALLS; i++) {
-        systemCallVec[i] = nullsys3;
-    }
     systemCallVec[SYS_SLEEP] = sleep;
 }
 
@@ -201,7 +207,7 @@ void initializeProcessTable() {
         processTable[i].nextSleeperProc = NULL;
         processTable[i].startTime = 0;
         processTable[i].sleepEndTime = 0;
-        processTable[i].mbox_id = MboxCreate(0, 4);
+        processTable[i].mbox_id = MboxCreate(1,0);
     }
 }
 

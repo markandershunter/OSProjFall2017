@@ -26,11 +26,11 @@ int Sleep(int seconds){
     CHECKMODE;
 
     sysArg.number = SYS_SLEEP;
-    sysArg.arg1 = (void *) (intptr_t) seconds;
+    sysArg.arg1 = (void *) (long) seconds;
 
     USLOSS_Syscall(&sysArg);
 
-    return (long) sysArg.arg4;
+    return (int)(long) sysArg.arg4;
 }
 
 
