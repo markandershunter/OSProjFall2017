@@ -235,6 +235,8 @@ void addToSleepQ(int pid){
 void removeFromSleepQ(int pid){
     procPtr ptr = NULL;
 
+    if (sleepQ == NULL) return;
+
     if(sleepQ->pid == pid){
         sleepQ = sleepQ->nextSleeperProc;
         return;
@@ -245,6 +247,7 @@ void removeFromSleepQ(int pid){
     while(ptr->nextSleeperProc != NULL){
         if(ptr->nextSleeperProc->pid == pid){
             ptr->nextSleeperProc = ptr->nextSleeperProc->nextSleeperProc;
+            break;
         }
         ptr = ptr->nextSleeperProc;
     }
