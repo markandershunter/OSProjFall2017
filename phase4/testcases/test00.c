@@ -44,6 +44,9 @@ int start4(char *arg)
     GetTimeofDay(&end);
 
     time = end - begin;
+    USLOSS_Console("my end: %d\n", end);
+    USLOSS_Console("my begin: %d\n", begin);
+    USLOSS_Console("my time: %d\n", time);
     time = ABS(5000000, time);
     if (time > 1000000) {
         USLOSS_Console("start4(): Sleep bad: %d %d\n",

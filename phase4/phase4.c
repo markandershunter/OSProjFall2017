@@ -105,8 +105,7 @@ start3(void)
 
 }
 
-static int
-ClockDriver(char *arg)
+static int ClockDriver(char *arg)
 {
     int result;
     int status;
@@ -133,6 +132,7 @@ ClockDriver(char *arg)
 
         while(ptr != NULL){
             if(ptr->sleepEndTime < currTime){
+                USLOSS_Console("match made %d %d\n", ptr->sleepEndTime, currTime);
                 removeFromSleepQ(ptr->pid);
                 MboxSend(ptr->mbox_id, NULL, 0);
             }
@@ -151,25 +151,27 @@ ClockDriver(char *arg)
 
 void sleep(USLOSS_Sysargs* args){
     // args->arg1 = (void *) (intptr_t) sleepReal((intptr_t) args->arg1);
-
+    sleepReal((int)args->arg1);
     return;
 }
 
 int sleepReal(int seconds){
     int pid = 0;
-    int time = 0;
+    int time_ = 0;
     void *msg = NULL;
+
 
     // check for valid seconds value
     if(seconds < 0) return INVALID_SLEEP_TIME;
 
-    gettimeofdayReal(&time);
-    USLOSS_Console("sleepReal(): Current time is %d\n", time);
-    getPID_real(&pid);
+
+    gettimeofdayReal(&time_);
+    USLOSS_Console("sleepReal(): Current time is %d\n", time_);
+    pid = getpid();
 
     processTable[pid % MAXPROC].pid = pid;
-    processTable[pid % MAXPROC].startTime = time;
-    processTable[pid % MAXPROC].sleepEndTime = time + (seconds);
+    processTable[pid % MAXPROC].startTime = time_;
+    processTable[pid % MAXPROC].sleepEndTime = time_ + (1000000 * seconds);
 
     addToSleepQ(pid);
     MboxReceive(processTable[pid % MAXPROC].mbox_id, msg, 0);
