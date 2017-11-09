@@ -17,6 +17,9 @@ struct process {
 extern void sleep(USLOSS_Sysargs* args);
 extern int sleepReal(int seconds);
 
+extern void diskSize(USLOSS_Sysargs* args);
+extern int diskSizeReal(int unit, int* sector, int* track, int* disk);
+
 extern void setToUserMode();
 
 extern void initializeSysCallTable();

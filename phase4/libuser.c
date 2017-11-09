@@ -41,9 +41,27 @@ int DiskRead(void *dbuff, int unit, int track, int first, int sectors, int *stat
 int DiskWrite(void *dbuff, int unit, int track, int first, int sectors, int *status){
     return 0;
 }
+
+
+
 int DiskSize(int unit, int *sector, int *track, int *disk){
-    return 0;
+    USLOSS_Sysargs sysArg;
+
+    CHECKMODE;
+
+    sysArg.number = SYS_DISKSIZE;
+    sysArg.arg1 = (void *)(long) unit;
+    sysArg.arg2 = (void *) sector;
+    sysArg.arg3 = (void *) track;
+    sysArg.arg4 = (void *) disk;
+
+    USLOSS_Syscall(&sysArg);
+
+    return (int)(long) sysArg.arg5;
 }
+
+
+
 int TermRead(char *buff, int bsize, int unit_id, int *nread){
     return 0;
 }
