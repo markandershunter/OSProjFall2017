@@ -226,7 +226,7 @@ static int DiskDriver(char *arg)
 
             int mbox_id = diskQ->mbox_id;
             int track = diskQ->track;
-            int currentSector = diskQ->first;
+            int firstSector = diskQ->first;
             int numSectors = diskQ->sectors;
             void* buffer = diskQ->buffer;
             int operation = diskQ->operation;
@@ -238,13 +238,14 @@ static int DiskDriver(char *arg)
             if (operation == DISK_READ) request.opr = USLOSS_DISK_READ;
             else request.opr = USLOSS_DISK_WRITE;
 
-            request.reg1 = (void*)(long) currentSector;
+            request.reg1 = (void*)(long) firstSector;
             request.reg2 = buffer;
 
 
-            for (i = 0; i < numSectors; i++, currentSector++) {
-                if (currentSector == USLOSS_DISK_TRACK_SIZE) {
-                    currentSector = 0;
+            for (i = 0; i < numSectors; i++, request.reg1++, request.reg2 += USLOSS_DISK_SECTOR_SIZE) {
+
+                if ((int)(long) request.reg1 == USLOSS_DISK_TRACK_SIZE) {
+                    request.reg1 = 0;
                     track++;
                     changeTrack(unit, track);
                 }
@@ -254,11 +255,11 @@ static int DiskDriver(char *arg)
                 result = waitDevice(USLOSS_DISK_DEV, unit, &status);
             }
 
-            MboxSend(mbox_id, NULL, 0);
-
             MboxSend(mbox_Q_ID, NULL, 0);
             *diskQ_ptr = (*diskQ_ptr)->nextDiskProc;
             MboxReceive(mbox_Q_ID, NULL, 0);
+
+            MboxSend(mbox_id, NULL, 0);
         }
     }
 
