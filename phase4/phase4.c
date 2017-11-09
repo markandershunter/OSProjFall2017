@@ -18,16 +18,16 @@ process processTable[MAXPROC];
 procPtr sleepQ;
 
 static int	ClockDriver(char *);
-// static int	DiskDriver(char *);
+static int	DiskDriver(char *);
 
 void
 start3(void)
 {
-    // char	name[128];
-    // char    buf[10];
-    // int		i;
+    char	name[128];
+    char    buf[10];
+    int		i;
     int		clockPID;
-    // int		pid;
+    int		pid;
     int		status;
     /*
      * Check kernel mode here.
@@ -69,14 +69,14 @@ start3(void)
      * driver, and perhaps do something with the pid returned.
      */
 
-    // for (i = 0; i < USLOSS_DISK_UNITS; i++) {
-    //     sprintf(buf, "%d", i);
-    //     pid = fork1(name, DiskDriver, buf, USLOSS_MIN_STACK, 2);
-    //     if (pid < 0) {
-    //         USLOSS_Console("start3(): Can't create term driver %d\n", i);
-    //         USLOSS_Halt(1);
-    //     }
-    // }
+    for (i = 0; i < USLOSS_DISK_UNITS; i++) {
+        sprintf(buf, "%d", i);
+        pid = fork1(name, DiskDriver, buf, USLOSS_MIN_STACK, 2);
+        if (pid < 0) {
+            USLOSS_Console("start3(): Can't create term driver %d\n", i);
+            USLOSS_Halt(1);
+        }
+    }
 
     // May be other stuff to do here before going on to terminal drivers
 
@@ -152,11 +152,16 @@ static int ClockDriver(char *arg)
     return 0;
 }
 
-// static int
-// DiskDriver(char *arg)
-// {
-//     return 0;
-// }
+
+
+
+static int DiskDriver(char *arg)
+{
+    return 0;
+}
+
+
+
 
 void sleep(USLOSS_Sysargs* args){
     int result = sleepReal((int)(long)args->arg1);
@@ -190,6 +195,48 @@ int sleepReal(int seconds){
     return 0;
 }
 
+
+
+
+
+void diskSize(USLOSS_Sysargs* args) {
+    int units = (int)(long) args->arg1;
+    int* sector = (int*) args->arg2;
+    int* track = (int*) args->arg3;
+    int* disk = (int*) args->arg4;
+
+    int result = diskSizeReal(units, sector, track, disk);
+
+    args->arg5 = (void*)(long) result;
+}
+
+
+int diskSizeReal(int unit, int* sector, int* track, int* disk) {
+    int status;
+
+    *sector = USLOSS_DISK_SECTOR_SIZE;
+    *track = USLOSS_DISK_TRACK_SIZE;
+
+    USLOSS_DeviceRequest request;
+    request.opr = USLOSS_DISK_TRACKS;
+    request.reg1 = disk;
+
+    int result = USLOSS_DeviceOutput(USLOSS_DISK_DEV, unit, &request);
+    result = waitDevice(USLOSS_DISK_DEV, unit, &status);
+
+    return result;
+}
+
+
+
+
+
+
+
+
+
+
+
 void setToUserMode() {
     int result = USLOSS_PsrSet(USLOSS_PsrGet() & ~USLOSS_PSR_CURRENT_MODE);
     result++;
@@ -197,6 +244,7 @@ void setToUserMode() {
 
 void initializeSysCallTable() {
     systemCallVec[SYS_SLEEP] = sleep;
+    systemCallVec[SYS_DISKSIZE] = diskSize;
 }
 
 void initializeProcessTable() {
