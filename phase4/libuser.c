@@ -35,16 +35,60 @@ int Sleep(int seconds){
 
 
 int DiskRead(void *dbuff, int unit, int track, int first, int sectors, int *status){
-    return 0;
+    USLOSS_Sysargs sysArg;
+
+    CHECKMODE;
+
+    sysArg.number = SYS_DISKREAD;
+    sysArg.arg1 = (void *) dbuff;
+    sysArg.arg2 = (void *)(long) unit;
+    sysArg.arg3 = (void *)(long) track;
+    sysArg.arg4 = (void *)(long) first;
+    sysArg.arg5 = (void *)(long) sectors;
+
+    USLOSS_Syscall(&sysArg);
+
+    *status = (int)(long) sysArg.arg5;
+
+    return *status;
 }
 
 int DiskWrite(void *dbuff, int unit, int track, int first, int sectors, int *status){
-    return 0;
+    USLOSS_Sysargs sysArg;
+
+    CHECKMODE;
+
+    sysArg.number = SYS_DISKWRITE;
+    sysArg.arg1 = (void *) dbuff;
+    sysArg.arg2 = (void *)(long) unit;
+    sysArg.arg3 = (void *)(long) track;
+    sysArg.arg4 = (void *)(long) first;
+    sysArg.arg5 = (void *)(long) sectors;
+
+    USLOSS_Syscall(&sysArg);
+
+    *status = (int)(long) sysArg.arg5;
+
+    return *status;
 }
 
+
 int DiskSize(int unit, int *sector, int *track, int *disk){
-    return 0;
+    USLOSS_Sysargs sysArg;
+
+    CHECKMODE;
+
+    sysArg.number = SYS_DISKSIZE;
+    sysArg.arg1 = (void *)(long) unit;
+    sysArg.arg2 = (void *) sector;
+    sysArg.arg3 = (void *) track;
+    sysArg.arg4 = (void *) disk;
+
+    USLOSS_Syscall(&sysArg);
+
+    return (int)(long) sysArg.arg5;
 }
+
 
 int TermRead(char *buff, int bsize, int unit_id, int *nread){
     // USLOSS_Sysargs sysArgs;
