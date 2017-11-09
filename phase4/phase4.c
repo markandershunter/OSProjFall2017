@@ -255,10 +255,18 @@ static int DiskDriver(char *arg)
                 result = waitDevice(USLOSS_DISK_DEV, unit, &status);
             }
 
+
+            // gain exclusive control of diskQ
             MboxSend(mbox_Q_ID, NULL, 0);
-            *diskQ_ptr = (*diskQ_ptr)->nextDiskProc;
+
+            *diskQ_ptr = (*diskQ_ptr)->nextDiskProc; // move to next request in the Q
+
+            // set current request's 'next' field to NULL to avoid infinite loops
+            diskQ->nextDiskProc = NULL;
+            
             MboxReceive(mbox_Q_ID, NULL, 0);
 
+            // notify process that disk I/O is done
             MboxSend(mbox_id, NULL, 0);
         }
     }
