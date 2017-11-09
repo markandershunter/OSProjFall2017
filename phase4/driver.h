@@ -16,6 +16,10 @@ struct process {
 
 extern void sleep(USLOSS_Sysargs* args);
 extern int sleepReal(int seconds);
+// extern void termRead(USLOSS_Sysargs* args);
+// extern int termReadReal(int unit, int size, char *buffer);
+// extern void termWrite(USLOSS_Sysargs* args);
+// extern int termWriteReal(int unit, int size, char *text);
 
 extern void setToUserMode();
 
