@@ -59,11 +59,11 @@ start3(void)
     disk1_MBoxID = MboxCreate(1, 0);
     mutex = MboxCreate(1, 0);
 
-    
+
     sleepQ = NULL;
     disk0Q = NULL;
     disk1Q = NULL;
-    
+
 
     /*
      * Create clock device driver
@@ -124,7 +124,7 @@ start3(void)
      * Zap the device drivers
      */
     zap(clockPID);  // clock driver
-    
+
     MboxSend(disk0_MBoxID, NULL, 0);
     zap(diskPID0);  // disk driver
 
@@ -200,7 +200,7 @@ static int DiskDriver(char *arg)
     int result = -1;
     int status = -1;
     USLOSS_DeviceRequest request;
-    
+
 
 
     if (*arg == '0') {
@@ -256,6 +256,7 @@ static int DiskDriver(char *arg)
                 MboxSend(mutex, NULL, 0);
                 result = USLOSS_DeviceOutput(USLOSS_DISK_DEV, unit, &request);
                 result = waitDevice(USLOSS_DISK_DEV, unit, &status);
+                result++;
                 MboxReceive(mutex, NULL, 0);
             }
 
@@ -267,7 +268,7 @@ static int DiskDriver(char *arg)
 
             // set current request's 'next' field to NULL to avoid infinite loops
             diskQ->nextDiskProc = NULL;
-            
+
             MboxReceive(mbox_Q_ID, NULL, 0);
 
             // notify process that disk I/O is done
@@ -627,5 +628,6 @@ void changeTrack(int unit, int track) {
     MboxSend(mutex, NULL, 0);
     result = USLOSS_DeviceOutput(USLOSS_DISK_DEV, unit, &request);
     result = waitDevice(USLOSS_DISK_DEV, unit, &status);
+    result++;
     MboxReceive(mutex, NULL, 0);
 }
