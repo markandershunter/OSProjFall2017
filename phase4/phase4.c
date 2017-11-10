@@ -17,6 +17,7 @@ int disk0_Q_MBoxID;
 int disk1_Q_MBoxID;
 int disk0_MBoxID;
 int disk1_MBoxID;
+int mutex;
 
 process processTable[MAXPROC];
 procPtr sleepQ;
@@ -56,6 +57,7 @@ start3(void)
     disk1_Q_MBoxID = MboxCreate(1, 0);
     disk0_MBoxID = MboxCreate(1, 0);
     disk1_MBoxID = MboxCreate(1, 0);
+    mutex = MboxCreate(1, 0);
     
     sleepQ = NULL;
     disk0Q = NULL;
@@ -250,9 +252,10 @@ static int DiskDriver(char *arg)
                     changeTrack(unit, track);
                 }
 
-
+                MboxSend(mutex, NULL, 0);
                 result = USLOSS_DeviceOutput(USLOSS_DISK_DEV, unit, &request);
                 result = waitDevice(USLOSS_DISK_DEV, unit, &status);
+                MboxReceive(mutex, NULL, 0);
             }
 
 
@@ -372,6 +375,22 @@ void diskWrite(USLOSS_Sysargs* args) {
     int first = (int)(long) args->arg4;
     int sectors = (int)(long) args->arg5;
 
+    // check for valid disk first
+    if (unit != 0 && unit != 1) {
+        args->arg5 = (void*)(long) INVALID_PARAMETERS;
+        return;
+    }
+
+    int numTracks = -1;
+    int i = getNumTracksOnDisk(unit, &numTracks);
+    i++;
+
+    // check location on disk
+    if (track < 0 || track > numTracks-1 || first < 0 || first > 15) {
+        args->arg5 = (void*)(long) INVALID_PARAMETERS;
+        return;
+    }
+
     args->arg5 = (void*)(long) diskWriteReal(unit, track, first, sectors, buffer);
 }
 
@@ -428,19 +447,10 @@ void diskSize(USLOSS_Sysargs* args) {
 
 
 int diskSizeReal(int unit, int* sector, int* track, int* disk) {
-    int status;
-
     *sector = USLOSS_DISK_SECTOR_SIZE;
     *track = USLOSS_DISK_TRACK_SIZE;
 
-    USLOSS_DeviceRequest request;
-    request.opr = USLOSS_DISK_TRACKS;
-    request.reg1 = disk;
-
-    int result = USLOSS_DeviceOutput(USLOSS_DISK_DEV, unit, &request);
-    result = waitDevice(USLOSS_DISK_DEV, unit, &status);
-
-    return result;
+    return getNumTracksOnDisk(unit, disk);
 }
 
 
@@ -552,6 +562,21 @@ void addToDiskQ(int unit, int pid){
 
 
 
+int getNumTracksOnDisk(int unit, int* disk) {
+    int status = -1;
+    USLOSS_DeviceRequest request;
+    request.opr = USLOSS_DISK_TRACKS;
+    request.reg1 = (void*)(long) disk;
+
+    MboxSend(mutex, NULL, 0);
+    int result = USLOSS_DeviceOutput(USLOSS_DISK_DEV, unit, &request);
+    result = waitDevice(USLOSS_DISK_DEV, unit, &status);
+    MboxReceive(mutex, NULL, 0);
+    return result;
+}
+
+
+
 
 void changeTrack(int unit, int track) {
     int result, status;
@@ -560,6 +585,9 @@ void changeTrack(int unit, int track) {
     request.opr = USLOSS_DISK_SEEK;
     request.reg1 = (void*)(long) track;
 
+
+    MboxSend(mutex, NULL, 0);
     result = USLOSS_DeviceOutput(USLOSS_DISK_DEV, unit, &request);
     result = waitDevice(USLOSS_DISK_DEV, unit, &status);
+    MboxReceive(mutex, NULL, 0);
 }

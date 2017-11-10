@@ -66,8 +66,8 @@ int DiskWrite(void *dbuff, int unit, int track, int first, int sectors, int *sta
     sysArg.arg3 = (void *)(long) track;
     sysArg.arg4 = (void *)(long) first;
     sysArg.arg5 = (void *)(long) sectors;
-
     USLOSS_Syscall(&sysArg);
+    
 
     *status = (int)(long) sysArg.arg5;
 
