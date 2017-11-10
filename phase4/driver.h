@@ -1,9 +1,11 @@
 #ifndef DRIVER
 #define DRIVER
 
-#define INVALID_SLEEP_TIME -1
+#define INVALID_SLEEP_TIME      -1
+#define INVALID_PARAMETERS      -1
 #define DISK_READ       0
 #define DISK_WRITE      1
+
 
 typedef struct process process;
 typedef struct process* procPtr;
@@ -45,6 +47,7 @@ extern void removeFromSleepQ(int pid);
 
 extern void addToDiskQ(int unit, int pid);
 
+extern int getNumTracksOnDisk(int unit, int* disk);
 extern void changeTrack(int unit, int track);
 
 #endif
