@@ -6,6 +6,7 @@
 #define DISK_READ       0
 #define DISK_WRITE      1
 
+
 typedef struct process process;
 typedef struct process* procPtr;
 

@@ -58,6 +58,7 @@ start3(void)
     disk0_MBoxID = MboxCreate(1, 0);
     disk1_MBoxID = MboxCreate(1, 0);
     mutex = MboxCreate(1, 0);
+
     
     sleepQ = NULL;
     disk0Q = NULL;
@@ -552,12 +553,55 @@ void addToDiskQ(int unit, int pid){
         ptr = disk1Q;
     }
 
-    // still need to make it do a circular scan
-    while(ptr->nextDiskProc != NULL){
-        ptr = ptr->nextDiskProc;
+
+
+    int currentTrack = ptr->track;
+    int myTrack = processTable[pid % MAXPROC].track;
+
+
+    if (currentTrack <= myTrack) {
+
+        while (ptr->nextDiskProc != NULL && ptr->nextDiskProc->track <= myTrack &&
+            ptr->nextDiskProc->track >= currentTrack) {
+            ptr = ptr->nextDiskProc;
+        }
+
+        processTable[pid % MAXPROC].nextDiskProc = ptr->nextDiskProc;
+        ptr->nextDiskProc = &processTable[pid % MAXPROC];
+        return;
     }
 
-    ptr->nextDiskProc = &processTable[pid % MAXPROC];
+    // must skip the first group of requests on higher tracks
+    else {
+        // skip all the high track requests
+        while (ptr->nextDiskProc != NULL && ptr->nextDiskProc->track >= currentTrack) {
+            ptr = ptr->nextDiskProc;
+        }
+
+        // this is the first low track request
+        if (ptr->nextDiskProc == NULL) {
+            ptr->nextDiskProc = &processTable[pid % MAXPROC];
+            return;
+        }
+
+        // now, sort through all the low track requests
+        else {
+            while (ptr->nextDiskProc != NULL && ptr->nextDiskProc->track <= myTrack) {
+                ptr = ptr->nextDiskProc;
+            }
+
+            processTable[pid % MAXPROC].nextDiskProc = ptr->nextDiskProc;
+            ptr->nextDiskProc = &processTable[pid % MAXPROC];
+            return;
+        }
+    }
+
+    // still need to make it do a circular scan
+    // while(ptr->nextDiskProc != NULL){
+    //     ptr = ptr->nextDiskProc;
+    // }
+
+    // ptr->nextDiskProc = &processTable[pid % MAXPROC];
 }
 
 
