@@ -596,12 +596,6 @@ void addToDiskQ(int unit, int pid){
         }
     }
 
-    // still need to make it do a circular scan
-    // while(ptr->nextDiskProc != NULL){
-    //     ptr = ptr->nextDiskProc;
-    // }
-
-    // ptr->nextDiskProc = &processTable[pid % MAXPROC];
 }
 
 
