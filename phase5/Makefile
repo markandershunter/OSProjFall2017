@@ -46,6 +46,8 @@ $(TESTS):	$(TARGET)
 	$(CC) $(CFLAGS) -c $(TESTDIR)/$@.c
 	$(CC) $(LDFLAGS) -o $@ $@.o $(LIBS)
 
+phase5.o:	phase5.h vm.h
+
 clean:
 	rm -f $(COBJS) $(TARGET) test?.o test? simple?.o simple? simple??.o simple?? gen.o gen \
 	chaos.o chaos quit.o quit replace?.o replace? outOfSwap.o \
