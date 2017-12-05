@@ -216,10 +216,10 @@ void* vmInitReal(int mappings, int pages, int frames, int pagers)
         pagerPids[i] = fork1("pager", Pager, NULL, 4 * USLOSS_MIN_STACK, PAGER_PRIORITY);
     }
 
-   /*
+    /*
     * Zero out, then initialize, the vmStats structure
     */
-   memset((char *) &vmStats, 0, sizeof(VmStats));
+    memset((char *) &vmStats, 0, sizeof(VmStats));
 
     int bytesPerSector, sectorsPerTrack, tracksPerDisk;
     diskSizeReal(1, &bytesPerSector, &sectorsPerTrack, &tracksPerDisk);
@@ -227,24 +227,22 @@ void* vmInitReal(int mappings, int pages, int frames, int pagers)
     int pagesPerDisk = bytesPerSector * sectorsPerTrack * 
                     tracksPerDisk / bytesPerPage;
 
-   vmStats.pages = pages;
-   vmStats.frames = frames;
-   vmStats.diskBlocks = pagesPerDisk;     // Size of disk, in blocks (pages)
-   vmStats.freeFrames = vmStats.frames;
-   vmStats.freeDiskBlocks = vmStats.diskBlocks;
-   vmStats.switches = 0;
-   vmStats.faults = 0;
-   vmStats.new = 0;
-   vmStats.pageIns = 0;
-   vmStats.pageOuts = 0;
-   vmStats.replaced = 0;
-   /*
-    * Initialize other vmStats fields.
-    */
+    vmStats.pages = pages;
+    vmStats.frames = frames;
+    vmStats.diskBlocks = pagesPerDisk;
+    vmStats.freeFrames = vmStats.frames;
+    vmStats.freeDiskBlocks = vmStats.diskBlocks;
+    vmStats.switches = 0;
+    vmStats.faults = 0;
+    vmStats.new = 0;
+    vmStats.pageIns = 0;
+    vmStats.pageOuts = 0;
+    vmStats.replaced = 0;
+
 
     
 
-   return USLOSS_MmuRegion(&dummy);
+    return USLOSS_MmuRegion(&dummy);
 } /* vmInitReal */
 
 
@@ -276,7 +274,7 @@ void vmDestroyReal(void)
 
     int i = USLOSS_MmuDone();
     i++;
-
+    
     /*
     * Kill the pagers here.
     */
@@ -401,15 +399,20 @@ static void FaultHandler(int type /* MMU_INT */,
 static int Pager(char *buf)
 {
     FaultMsg* currentFault = NULL;
+    int dummy = -1;
+    int tag = -1;
+    int firstTime = 0;
+
     while(!isZapped()) {
         /* Wait for fault to occur (receive from mailbox) */
         MboxReceive(faultMBoxID, NULL, 0);
 
+        if (isZapped()) break;
+
         currentFault = &faults[nextFaultMsgLocation-1 % MAXPROC];
-        // USLOSS_Console("fault pid: %d\n", currentFault->pid);
-        // USLOSS_Console("fault addr: %d\n", currentFault->addr);
 
         if (processes[currentFault->pid % MAXPROC].pageTable[0].state == UNUSED) {
+            firstTime = 1;
             processes[currentFault->pid % MAXPROC].pageTable[0].state = IN_PAGE_TABLE;
             vmStats.new++;
         }
@@ -424,6 +427,16 @@ static int Pager(char *buf)
 
         processes[currentFault->pid % MAXPROC].pageTable[0].frame = freeFrameNumber; // cheating
         
+        // initializing frame
+        if (firstTime) {
+            // zero-ing out frame
+            dummy = USLOSS_MmuGetTag(&tag);
+            dummy = USLOSS_MmuMap(tag, (int)(long) currentFault->addr, 
+                freeFrameNumber, USLOSS_MMU_PROT_RW);
+            dummy++;
+            memset((char *) USLOSS_MmuRegion(&dummy), 0, USLOSS_MmuPageSize());
+            // dummy = USLOSS_MmuUnmap(tag, (int)(long) currentFault->addr);
+        }
         /* Unblock waiting (faulting) process */
         MboxSend(currentFault->replyMbox, NULL, 0);
     }
