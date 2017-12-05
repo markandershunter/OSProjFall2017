@@ -28,4 +28,8 @@ extern int  DiskSize(int unit, int *sector, int *track, int *disk);
 extern int  TermRead(char *buff, int bsize, int unit_id, int *nread);
 extern int  TermWrite(char *buff, int bsize, int unit_id, int *nwrite);
 
+
+extern int VmInit(int mappings, int pages, int frames, int pagers, void **region);
+extern int VmDestroy(void);
+
 #endif

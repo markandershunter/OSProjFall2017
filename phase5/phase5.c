@@ -17,24 +17,28 @@
 #include <vm.h>
 #include <string.h>
 
-extern void mbox_create(USLOSS_Sysargs *args_ptr);
-extern void mbox_release(USLOSS_Sysargs *args_ptr);
-extern void mbox_send(USLOSS_Sysargs *args_ptr);
-extern void mbox_receive(USLOSS_Sysargs *args_ptr);
-extern void mbox_condsend(USLOSS_Sysargs *args_ptr);
-extern void mbox_condreceive(USLOSS_Sysargs *args_ptr);
 
-// static Process processes[MAXPROC];
+
+Process processes[MAXPROC];
+Frame*  frameTable;
 
 FaultMsg faults[MAXPROC]; /* Note that a process can have only
                            * one fault at a time, so we can
                            * allocate the messages statically
                            * and index them by pid. */
+int nextFaultMsgLocation = 0;
+int faultMBoxID;
+
 VmStats  vmStats;
 
+void *vmRegion;
 
-// static void FaultHandler(int type, void * offset);
-// static void FaultHandler(int type, int arg);
+int numPages = -1;
+
+
+
+static void FaultHandler(int type, void * offset);
+static int Pager(char *buf);
 
 static void vmInit(USLOSS_Sysargs *USLOSS_SysargsPtr);
 static void vmDestroy(USLOSS_Sysargs *USLOSS_SysargsPtr);
@@ -59,28 +63,23 @@ int start4(char *arg)
     int result;
     int status;
 
-    /* to get user-process access to mailbox functions */
-    systemCallVec[SYS_MBOXCREATE]      = mbox_create;
-    systemCallVec[SYS_MBOXRELEASE]     = mbox_release;
-    systemCallVec[SYS_MBOXSEND]        = mbox_send;
-    systemCallVec[SYS_MBOXRECEIVE]     = mbox_receive;
-    systemCallVec[SYS_MBOXCONDSEND]    = mbox_condsend;
-    systemCallVec[SYS_MBOXCONDRECEIVE] = mbox_condreceive;
 
     /* user-process access to VM functions */
-    // ERROR ???????
     systemCallVec[SYS_VMINIT]    = vmInit;
     systemCallVec[SYS_VMDESTROY] = vmDestroy; 
+    
     result = Spawn("Start5", start5, NULL, 8*USLOSS_MIN_STACK, 2, &pid);
     if (result != 0) {
         USLOSS_Console("start4(): Error spawning start5\n");
         Terminate(1);
     }
+    
     result = Wait(&pid, &status);
     if (result != 0) {
         USLOSS_Console("start4(): Error waiting for start5\n");
         Terminate(1);
     }
+    
     Terminate(0);
     return 0; // not reached
 
@@ -101,10 +100,32 @@ int start4(char *arg)
  *
  *----------------------------------------------------------------------
  */
-static void
-vmInit(USLOSS_Sysargs *USLOSS_SysargsPtr)
+static void vmInit(USLOSS_Sysargs *USLOSS_SysargsPtr)
 {
+    int dummy = -1;
+
     CheckMode();
+
+    int mappings = (int)(long) USLOSS_SysargsPtr->arg1;
+    int pages = (int)(long) USLOSS_SysargsPtr->arg2;
+    int frames = (int)(long) USLOSS_SysargsPtr->arg3;
+    int pagers = (int)(long) USLOSS_SysargsPtr->arg4;
+
+
+    if (mappings != pages || pagers > MAXPAGERS) {
+        USLOSS_SysargsPtr->arg4 = (void*)(long) -1;
+    }
+    else if (USLOSS_MmuRegion(&dummy) != NULL) {
+        USLOSS_SysargsPtr->arg4 = (void*)(long) -2;
+    }
+    else USLOSS_SysargsPtr->arg4 = 0;
+
+
+    USLOSS_SysargsPtr->arg1 = vmInitReal(mappings, pages, frames, pagers);
+
+    numPages = pages;
+
+    return;
 } /* vmInit */
 
 
@@ -124,10 +145,11 @@ vmInit(USLOSS_Sysargs *USLOSS_SysargsPtr)
  *----------------------------------------------------------------------
  */
 
-static void
-vmDestroy(USLOSS_Sysargs *USLOSS_SysargsPtr)
+static void vmDestroy(USLOSS_Sysargs *USLOSS_SysargsPtr)
 {
    CheckMode();
+
+   vmDestroyReal();
 } /* vmDestroy */
 
 
@@ -148,11 +170,11 @@ vmDestroy(USLOSS_Sysargs *USLOSS_SysargsPtr)
  *
  *----------------------------------------------------------------------
  */
-void *
-vmInitReal(int mappings, int pages, int frames, int pagers)
+void* vmInitReal(int mappings, int pages, int frames, int pagers)
 {
    int status;
    int dummy;
+   int i;
 
    CheckMode();
    status = USLOSS_MmuInit(mappings, pages, frames, USLOSS_MMU_MODE_TLB);
@@ -160,19 +182,35 @@ vmInitReal(int mappings, int pages, int frames, int pagers)
       USLOSS_Console("vmInitReal: couldn't initialize MMU, status %d\n", status);
       abort();
    }
-   // USLOSS_IntVec[USLOSS_MMU_INT] = FaultHandler;
+   USLOSS_IntVec[USLOSS_MMU_INT] = FaultHandler;
 
    /*
     * Initialize page tables.
     */
+    for (i = 0; i < MAXPROC; i++) {
+        processes[i].numPages = 0;
+        processes[i].pageTable = NULL;
+    }
+
+    frameTable = malloc(sizeof(Frame) * frames);
+
+    for (i = 0; i < frames; i++) {
+        frameTable[i].used = 0;
+        frameTable[i].ownerPid = -1;
+        frameTable[i].pageNumber = -1;
+    }
 
    /* 
     * Create the fault mailbox.
     */
+    faultMBoxID = MboxCreate(1, 0);
 
    /*
     * Fork the pagers.
     */
+    for (i = 0; i < pagers; i++) {
+        fork1("pager", Pager, NULL, 4 * USLOSS_MIN_STACK, PAGER_PRIORITY);
+    }
 
    /*
     * Zero out, then initialize, the vmStats structure
@@ -183,42 +221,23 @@ vmInitReal(int mappings, int pages, int frames, int pagers)
    /*
     * Initialize other vmStats fields.
     */
+    // int diskBlocks;     // Size of disk, in blocks (pages)
+    // int freeFrames;     // # of frames that are not in-use
+    // int freeDiskBlocks; // # of blocks that are not in-use
+    // int switches;       // # of context switches
+    // int faults;         // # of page faults
+    // int new;            // # faults caused by previously unused pages
+    // int pageIns;        // # faults that required reading page from disk
+    // int pageOuts;       // # faults that required writing a page to disk
+    // int replaced;       // # pages replaced; i.e., frame had a page and we
+    //                     //   replaced that page in the frame with a different
+    //                     //   page. */
 
    return USLOSS_MmuRegion(&dummy);
 } /* vmInitReal */
 
 
-/*
- *----------------------------------------------------------------------
- *
- * PrintStats --
- *
- *      Print out VM statistics.
- *
- * Results:
- *      None
- *
- * Side effects:
- *      Stuff is printed to the USLOSS_Console.
- *
- *----------------------------------------------------------------------
- */
-void
-PrintStats(void)
-{
-     USLOSS_Console("VmStats\n");
-     USLOSS_Console("pages:          %d\n", vmStats.pages);
-     USLOSS_Console("frames:         %d\n", vmStats.frames);
-     USLOSS_Console("diskBlocks:     %d\n", vmStats.diskBlocks);
-     USLOSS_Console("freeFrames:     %d\n", vmStats.freeFrames);
-     USLOSS_Console("freeDiskBlocks: %d\n", vmStats.freeDiskBlocks);
-     USLOSS_Console("switches:       %d\n", vmStats.switches);
-     USLOSS_Console("faults:         %d\n", vmStats.faults);
-     USLOSS_Console("new:            %d\n", vmStats.new);
-     USLOSS_Console("pageIns:        %d\n", vmStats.pageIns);
-     USLOSS_Console("pageOuts:       %d\n", vmStats.pageOuts);
-     USLOSS_Console("replaced:       %d\n", vmStats.replaced);
-} /* PrintStats */
+
 
 
 /*
@@ -237,8 +256,7 @@ PrintStats(void)
  *
  *----------------------------------------------------------------------
  */
-void
-vmDestroyReal(void)
+void vmDestroyReal(void)
 {
 
    CheckMode();
@@ -247,25 +265,56 @@ vmDestroyReal(void)
    /*
     * Kill the pagers here.
     */
+    for ()
+
+
    /* 
     * Print vm statistics.
     */
-   USLOSS_Console("vmStats:\n");
-   USLOSS_Console("pages: %d\n", vmStats.pages);
-   USLOSS_Console("frames: %d\n", vmStats.frames);
-   USLOSS_Console("diskBlocks: %d\n", vmStats.diskBlocks);
-   USLOSS_Console("freeFrames: %d\n", vmStats.freeFrames);
-   USLOSS_Console("freeDiskBlocks: %d\n", vmStats.freeDiskBlocks);
-   USLOSS_Console("switches: %d\n", vmStats.switches);
-   USLOSS_Console("faults: %d\n", vmStats.faults);
-   USLOSS_Console("new: %d\n", vmStats.new);
-   USLOSS_Console("pageIns: %d\n", vmStats.pageIns);
-   USLOSS_Console("pageOuts: %d\n", vmStats.pageOuts);
-   USLOSS_Console("replaced: %d\n", vmStats.replaced);
+   PrintStats();
 
    /* and so on... */
 
 } /* vmDestroyReal */
+
+
+
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * PrintStats --
+ *
+ *      Print out VM statistics.
+ *
+ * Results:
+ *      None
+ *
+ * Side effects:
+ *      Stuff is printed to the USLOSS_Console.
+ *
+ *----------------------------------------------------------------------
+ */
+void PrintStats(void)
+{
+     USLOSS_Console("VmStats\n");
+     USLOSS_Console("pages:          %d\n", vmStats.pages);
+     USLOSS_Console("frames:         %d\n", vmStats.frames);
+     USLOSS_Console("diskBlocks:     %d\n", vmStats.diskBlocks);
+     USLOSS_Console("freeFrames:     %d\n", vmStats.freeFrames);
+     USLOSS_Console("freeDiskBlocks: %d\n", vmStats.freeDiskBlocks);
+     USLOSS_Console("switches:       %d\n", vmStats.switches);
+     USLOSS_Console("faults:         %d\n", vmStats.faults);
+     USLOSS_Console("new:            %d\n", vmStats.new);
+     USLOSS_Console("pageIns:        %d\n", vmStats.pageIns);
+     USLOSS_Console("pageOuts:       %d\n", vmStats.pageOuts);
+     USLOSS_Console("replaced:       %d\n", vmStats.replaced);
+} /* PrintStats */
+
+
+
+   
 
 /*
  *----------------------------------------------------------------------
@@ -284,20 +333,31 @@ vmDestroyReal(void)
  *
  *----------------------------------------------------------------------
  */
-// static void FaultHandler(int type /* MMU_INT */,
-//              int arg  /* Offset within VM region */)
-// {
-//    int cause;
+static void FaultHandler(int type /* MMU_INT */,
+             void* arg  /* Offset within VM region */)
+{
+   int cause;
 
-//    assert(type == USLOSS_MMU_INT);
-//    cause = USLOSS_MmuGetCause();
-//    assert(cause == USLOSS_MMU_FAULT);
-//    vmStats.faults++;
-//    /*
-//     * Fill in faults[pid % MAXPROC], send it to the pagers, and wait for the
-//     * reply.
-//     */
-// } /* FaultHandler */
+   assert(type == USLOSS_MMU_INT);
+   cause = USLOSS_MmuGetCause();
+   assert(cause == USLOSS_MMU_FAULT);
+   vmStats.faults++;
+   /*
+    * Fill in faults[pid % MAXPROC], send it to the pagers, and wait for the
+    * reply.
+    */
+    faults[nextFaultMsgLocation % MAXPROC].pid = getpid();
+    faults[nextFaultMsgLocation % MAXPROC].addr = arg;
+    faults[nextFaultMsgLocation % MAXPROC].replyMbox = MboxCreate(1,0);
+    nextFaultMsgLocation++;
+
+
+    MboxSend(faultMBoxID, NULL, 0);
+    MboxReceive(faults[nextFaultMsgLocation-1 % MAXPROC].replyMbox, NULL, 0);
+
+    MboxRelease(faults[nextFaultMsgLocation-1 % MAXPROC].replyMbox);
+
+} /* FaultHandler */
 
 
 /*
@@ -315,16 +375,35 @@ vmDestroyReal(void)
  *
  *----------------------------------------------------------------------
  */
-// static int Pager(char *buf)
-// {
-//     while(1) {
-//         /* Wait for fault to occur (receive from mailbox) */
-//         /* Look for free frame */
-//         /* If there isn't one then use clock algorithm to
-//          * replace a page (perhaps write to disk) */
-//         /* Load page into frame from disk, if necessary */
-//         /* Unblock waiting (faulting) process */
-//     }
-//     return 0;
-// } /* Pager */
+static int Pager(char *buf)
+{
+    FaultMsg* currentFault = NULL;
+    while(1) {
+        /* Wait for fault to occur (receive from mailbox) */
+        MboxReceive(faultMBoxID, NULL, 0);
+
+        currentFault = &faults[nextFaultMsgLocation-1 % MAXPROC];
+        USLOSS_Console("fault pid: %d\n", currentFault->pid);
+        USLOSS_Console("fault addr: %d\n", currentFault->addr);
+
+        if (processes[currentFault->pid % MAXPROC].pageTable[0].state == UNUSED) {
+            processes[currentFault->pid % MAXPROC].pageTable[0].state = IN_PAGE_TABLE;
+            vmStats.new++;
+        }
+
+        /* Look for free frame */
+        int freeFrameNumber = 0; // cheating
+        
+        /* If there isn't one then use clock algorithm to
+         * replace a page (perhaps write to disk) */
+
+        /* Load page into frame from disk, if necessary */
+
+        processes[currentFault->pid % MAXPROC].pageTable[0].frame = freeFrameNumber; // cheating
+        
+        /* Unblock waiting (faulting) process */
+        MboxSend(currentFault->replyMbox, NULL, 0);
+    }
+    return 0;
+} /* Pager */
 
