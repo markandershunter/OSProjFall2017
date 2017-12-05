@@ -238,8 +238,7 @@ int VmInit(int mappings, int pages, int frames, int pagers, void **region)
  *
  */
 
-int
-VmDestroy(void) {
+int VmDestroy(void) {
     USLOSS_Sysargs     sysArg;
 
     CHECKMODE;

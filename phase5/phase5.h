@@ -14,7 +14,7 @@
 /*
  * Pager priority.
  */
-#define PAGER_PRIORITY	2
+#define PAGER_PRIORITY  2
 
 /*
  * Maximum number of pagers.
@@ -35,12 +35,15 @@ typedef struct VmStats {
     int new;            // # faults caused by previously unused pages
     int pageIns;        // # faults that required reading page from disk
     int pageOuts;       // # faults that required writing a page to disk
-    int replaced;	// # pages replaced; i.e., frame had a page and we
+    int replaced;       // # pages replaced; i.e., frame had a page and we
                         //   replaced that page in the frame with a different
                         //   page. */
 } VmStats;
 
-extern VmStats	vmStats;
+extern VmStats  vmStats;
 //extern void PrintStats();
+
+extern int VmInit(int mappings, int pages, int frames, int pagers, void **region);
+extern int VmDestroy(void);
 
 #endif /* _PHASE5_H */

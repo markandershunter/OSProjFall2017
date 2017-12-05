@@ -13,7 +13,15 @@
  */
 #define UNUSED 500
 #define INCORE 501
+#define IN_PAGE_TABLE 502
 /* You'll probably want more states */
+
+
+typedef struct Frame {
+    int used;           // is this frame being used
+    int ownerPid;       // which process owns this frame
+    int pageNumber;     // page that is in this frame
+} Frame;
 
 
 /*
@@ -45,5 +53,14 @@ typedef struct FaultMsg {
     int  replyMbox;  // Mailbox to send reply.
     // Add more stuff here.
 } FaultMsg;
+
+
+extern  int  start5(char *);
+
+void* vmInitReal(int mappings, int pages, int frames, int pagers);
+void vmDestroyReal(void);
+
+void PrintStats(void);
+
 
 #define CheckMode() assert(USLOSS_PsrGet() & USLOSS_PSR_CURRENT_MODE)
