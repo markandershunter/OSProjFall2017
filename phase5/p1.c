@@ -2,7 +2,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "usloss.h"
+#include "usyscall.h"
 #include <phase1.h>
+#include "phase5.h"
 #include "vm.h"
 
 
@@ -11,6 +13,7 @@ extern int debugflag;
 
 extern Process processes[MAXPROC];
 extern int numPages;
+extern VmStats  vmStats;
 
 void
 p1_fork(int pid)
@@ -33,12 +36,17 @@ p1_fork(int pid)
 void
 p1_switch(int old, int new)
 {
-    USLOSS_Console("old: %d, new: %d\n", old, new);
-
-    if (old == 10 && new == 11) USLOSS_MmuMap(0, 0,0,USLOSS_MMU_PROT_RW);
+    int i;
 
     if (DEBUG && debugflag)
         USLOSS_Console("p1_switch() called: old = %d, new = %d\n", old, new);
+
+    if (old == 10 && new == 11) {
+        i = USLOSS_MmuMap(0, 0,0,USLOSS_MMU_PROT_RW);
+        i++;
+    }
+    
+    vmStats.switches++;
 } /* p1_switch */
 
 void

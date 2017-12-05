@@ -58,6 +58,9 @@ typedef struct FaultMsg {
 extern  int  start5(char *);
 
 void* vmInitReal(int mappings, int pages, int frames, int pagers);
+void vmDestroyReal(void);
+
+void PrintStats(void);
 
 
 #define CheckMode() assert(USLOSS_PsrGet() & USLOSS_PSR_CURRENT_MODE)

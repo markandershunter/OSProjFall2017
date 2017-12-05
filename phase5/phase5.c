@@ -14,6 +14,7 @@
 #include <phase4.h>
 #include <phase5.h>
 #include <libuser.h>
+#include <providedPrototypes.h>
 #include <vm.h>
 #include <string.h>
 
@@ -35,6 +36,8 @@ void *vmRegion;
 
 int numPages = -1;
 
+int numPagers = -1;
+int pagerPids[MAXPAGERS];
 
 
 static void FaultHandler(int type, void * offset);
@@ -208,30 +211,38 @@ void* vmInitReal(int mappings, int pages, int frames, int pagers)
    /*
     * Fork the pagers.
     */
+    numPagers = pagers;
     for (i = 0; i < pagers; i++) {
-        fork1("pager", Pager, NULL, 4 * USLOSS_MIN_STACK, PAGER_PRIORITY);
+        pagerPids[i] = fork1("pager", Pager, NULL, 4 * USLOSS_MIN_STACK, PAGER_PRIORITY);
     }
 
    /*
     * Zero out, then initialize, the vmStats structure
     */
    memset((char *) &vmStats, 0, sizeof(VmStats));
+
+    int bytesPerSector, sectorsPerTrack, tracksPerDisk;
+    diskSizeReal(1, &bytesPerSector, &sectorsPerTrack, &tracksPerDisk);
+    int bytesPerPage = USLOSS_MmuPageSize();
+    int pagesPerDisk = bytesPerSector * sectorsPerTrack * 
+                    tracksPerDisk / bytesPerPage;
+
    vmStats.pages = pages;
    vmStats.frames = frames;
+   vmStats.diskBlocks = pagesPerDisk;     // Size of disk, in blocks (pages)
+   vmStats.freeFrames = vmStats.frames;
+   vmStats.freeDiskBlocks = vmStats.diskBlocks;
+   vmStats.switches = 0;
+   vmStats.faults = 0;
+   vmStats.new = 0;
+   vmStats.pageIns = 0;
+   vmStats.pageOuts = 0;
+   vmStats.replaced = 0;
    /*
     * Initialize other vmStats fields.
     */
-    // int diskBlocks;     // Size of disk, in blocks (pages)
-    // int freeFrames;     // # of frames that are not in-use
-    // int freeDiskBlocks; // # of blocks that are not in-use
-    // int switches;       // # of context switches
-    // int faults;         // # of page faults
-    // int new;            // # faults caused by previously unused pages
-    // int pageIns;        // # faults that required reading page from disk
-    // int pageOuts;       // # faults that required writing a page to disk
-    // int replaced;       // # pages replaced; i.e., frame had a page and we
-    //                     //   replaced that page in the frame with a different
-    //                     //   page. */
+
+    
 
    return USLOSS_MmuRegion(&dummy);
 } /* vmInitReal */
@@ -259,21 +270,33 @@ void* vmInitReal(int mappings, int pages, int frames, int pagers)
 void vmDestroyReal(void)
 {
 
-   CheckMode();
-   int i = USLOSS_MmuDone();
-   i++;
-   /*
+    CheckMode();
+   
+    if (numPages == -1) return;
+
+    int i = USLOSS_MmuDone();
+    i++;
+
+    /*
     * Kill the pagers here.
     */
-    for ()
+    for (i = 0; i < numPagers; i++) {
+        MboxSend(faultMBoxID, NULL, 0);
+        zap(pagerPids[i]);
+    }
 
 
-   /* 
+    /* 
     * Print vm statistics.
     */
-   PrintStats();
+    PrintStats();
 
-   /* and so on... */
+    /* and so on... */
+    for(i = 0; i < MAXPROC; i++) {
+        free(processes[i].pageTable);
+    }
+
+    free(frameTable);
 
 } /* vmDestroyReal */
 
@@ -314,7 +337,7 @@ void PrintStats(void)
 
 
 
-   
+
 
 /*
  *----------------------------------------------------------------------
@@ -378,13 +401,13 @@ static void FaultHandler(int type /* MMU_INT */,
 static int Pager(char *buf)
 {
     FaultMsg* currentFault = NULL;
-    while(1) {
+    while(!isZapped()) {
         /* Wait for fault to occur (receive from mailbox) */
         MboxReceive(faultMBoxID, NULL, 0);
 
         currentFault = &faults[nextFaultMsgLocation-1 % MAXPROC];
-        USLOSS_Console("fault pid: %d\n", currentFault->pid);
-        USLOSS_Console("fault addr: %d\n", currentFault->addr);
+        // USLOSS_Console("fault pid: %d\n", currentFault->pid);
+        // USLOSS_Console("fault addr: %d\n", currentFault->addr);
 
         if (processes[currentFault->pid % MAXPROC].pageTable[0].state == UNUSED) {
             processes[currentFault->pid % MAXPROC].pageTable[0].state = IN_PAGE_TABLE;
