@@ -38,7 +38,7 @@ p1_switch(int old, int new)
 {
     int i, tag, dummy;
     USLOSS_Console("%d %d\n", old, new);
-    if (old == 0) USLOSS_Console("hooray\n");
+    // if (old == 0) USLOSS_Console("hooray\n");
 
     if (DEBUG && debugflag)
         USLOSS_Console("p1_switch() called: old = %d, new = %d\n", old, new);
@@ -57,14 +57,13 @@ p1_switch(int old, int new)
         if (new >= 11) {
             for (i = 0; i < numPages; i++) {
                 if (processes[new % MAXPROC].pageTable[i].state != UNUSED) {
-                    dummy = USLOSS_MmuMap(tag, i, 
+                    dummy = USLOSS_MmuMap(tag, i,
                         processes[new % MAXPROC].pageTable[i].frame, USLOSS_MMU_PROT_RW);
                 }
             }
         }
-        
-        
-        // dummy = USLOSS_MmuMap(0, 0,0,USLOSS_MMU_PROT_RW);
+
+
         dummy++;
     }
 
