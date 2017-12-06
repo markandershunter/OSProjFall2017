@@ -12,12 +12,15 @@
  */ 
 #define UNUSED  500
 #define INCORE  501
-#define IN_PAGE_TABLE 502
+#define IN_PAGE_TABLE       502
+#define NOT_IN_PAGE_TABLE   503
+#define RECENTLY_REMOVED    504
 /* You'll probably want more states */
 
 
 typedef struct Frame {
     int used;           // is this frame being used
+    int usedRecently;   // part of the clock algorithm
     int ownerPid;       // which process owns this frame
     int pageNumber;     // page that is in this frame
 } Frame;
