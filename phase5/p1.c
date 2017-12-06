@@ -36,16 +36,38 @@ p1_fork(int pid)
 void
 p1_switch(int old, int new)
 {
-    int i;
+    int i, tag, dummy;
+    USLOSS_Console("%d %d\n", old, new);
+    if (old == 0) USLOSS_Console("hooray\n");
 
     if (DEBUG && debugflag)
         USLOSS_Console("p1_switch() called: old = %d, new = %d\n", old, new);
 
     if (old == 10 && new == 11) {
-        i = USLOSS_MmuMap(0, 0,0,USLOSS_MMU_PROT_RW);
-        i++;
+        dummy = USLOSS_MmuGetTag(&tag);
+
+        if (old >= 11) {
+            for (i = 0; i < numPages; i++) {
+                if (processes[old % MAXPROC].pageTable[i].state != UNUSED) {
+                    dummy = USLOSS_MmuUnmap(tag, i);
+                }
+            }
+        }
+
+        if (new >= 11) {
+            for (i = 0; i < numPages; i++) {
+                if (processes[new % MAXPROC].pageTable[i].state != UNUSED) {
+                    dummy = USLOSS_MmuMap(tag, i, 
+                        processes[new % MAXPROC].pageTable[i].frame, USLOSS_MMU_PROT_RW);
+                }
+            }
+        }
+        
+        
+        // dummy = USLOSS_MmuMap(0, 0,0,USLOSS_MMU_PROT_RW);
+        dummy++;
     }
-    
+
     vmStats.switches++;
 } /* p1_switch */
 

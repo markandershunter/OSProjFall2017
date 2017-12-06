@@ -2,7 +2,6 @@
  * vm.h
  */
 
-
 /*
  * All processes use the same tag.
  */
@@ -10,9 +9,9 @@
 
 /*
  * Different states for a page.
- */
-#define UNUSED 500
-#define INCORE 501
+ */ 
+#define UNUSED  500
+#define INCORE  501
 #define IN_PAGE_TABLE 502
 /* You'll probably want more states */
 
@@ -61,6 +60,7 @@ void* vmInitReal(int mappings, int pages, int frames, int pagers);
 void vmDestroyReal(void);
 
 void PrintStats(void);
+int findFrameNumber(void);
 
 
 #define CheckMode() assert(USLOSS_PsrGet() & USLOSS_PSR_CURRENT_MODE)
