@@ -12,7 +12,8 @@
 #define CLEAN_BLANK     1
 
 
-
+#define SWAP_DISK       1
+#define NUM_SECTORS     8
 
 /*
  * All processes use the same tag.
@@ -28,6 +29,7 @@
 #define BLANK           503
 
 #define NO_FRAME        -1
+#define NO_DISK_BLOCK   -1
 
 
 

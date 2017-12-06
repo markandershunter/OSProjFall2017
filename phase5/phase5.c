@@ -42,6 +42,7 @@ int numPagers = -1;
 int pagerPids[MAXPAGERS];
 
 int clockHand = 0;
+int nextEmptyDiskBlock = 0;
 
 
 static void FaultHandler(int type, void * offset);
@@ -229,6 +230,7 @@ void* vmInitReal(int mappings, int pages, int frames, int pagers)
 
     int bytesPerSector, sectorsPerTrack, tracksPerDisk;
     diskSizeReal(1, &bytesPerSector, &sectorsPerTrack, &tracksPerDisk);
+
     int bytesPerPage = USLOSS_MmuPageSize();
     int pagesPerDisk = bytesPerSector * sectorsPerTrack * 
                     tracksPerDisk / bytesPerPage;
@@ -363,12 +365,13 @@ void PrintStats(void)
 static void FaultHandler(int type /* MMU_INT */,
              void* arg  /* Offset within VM region */)
 {
-   int cause;
+    int cause;
 
-   assert(type == USLOSS_MMU_INT);
-   cause = USLOSS_MmuGetCause();
-   assert(cause == USLOSS_MMU_FAULT);
-   vmStats.faults++;
+    assert(type == USLOSS_MMU_INT);
+    cause = USLOSS_MmuGetCause();
+    assert(cause == USLOSS_MMU_FAULT);
+    vmStats.faults++;
+
    /*
     * Fill in faults[pid % MAXPROC], send it to the pagers, and wait for the
     * reply.
@@ -406,6 +409,7 @@ static int Pager(char *buf)
     FaultMsg* currentFault = NULL;
     int dummy = -1;
     int access = 0;
+    int track, first;
 
     while(!isZapped()) {
         /* Wait for fault to occur (receive from mailbox) */
@@ -434,10 +438,32 @@ static int Pager(char *buf)
 
         // another page might think this frame belongs to it... undo this
         if (frameTable[freeFrameNumber].ownerPid != NO_OWNER) {
-            processes[oldOwner % MAXPROC].pageTable[oldPageNumber].frame = NO_FRAME;
-
             if (access & USLOSS_MMU_DIRTY) {
+
+                dummy = USLOSS_MmuMap(TAG, oldPageNumber, freeFrameNumber, 
+                    USLOSS_MMU_PROT_RW);
+
+                void* memRegion = USLOSS_MmuRegion(&dummy);
+                void* buffer = malloc(USLOSS_MmuPageSize());
+                memcpy(buffer, memRegion + oldPageNumber * USLOSS_MmuPageSize(),
+                    USLOSS_MmuPageSize());
+
+
                 // write to disk
+                if (processes[oldOwner % MAXPROC].pageTable[oldPageNumber].diskBlock == NO_DISK_BLOCK) {
+                    track = nextEmptyDiskBlock / 2;
+                    first = (nextEmptyDiskBlock % 2) * 8;
+                    processes[oldOwner % MAXPROC].pageTable[oldPageNumber].diskBlock = nextEmptyDiskBlock++;
+                }
+                else {
+                    track = processes[oldOwner % MAXPROC].pageTable[oldPageNumber].diskBlock / 2;
+                    first = (processes[oldOwner % MAXPROC].pageTable[oldPageNumber].diskBlock % 2) * 8;
+                }
+
+                diskWriteReal(SWAP_DISK, track, first, NUM_SECTORS, buffer);
+
+                free(buffer);
+                dummy = USLOSS_MmuUnmap(TAG, oldPageNumber);
 
                 vmStats.pageOuts++;
 
@@ -453,9 +479,9 @@ static int Pager(char *buf)
                 }
             }
             
+            processes[oldOwner % MAXPROC].pageTable[oldPageNumber].frame = NO_FRAME;
         }
 
-        
         
 
         /* Load page into frame from disk, if necessary */
@@ -476,7 +502,7 @@ static int Pager(char *buf)
             // set frame to clean
             dummy = USLOSS_MmuSetAccess(freeFrameNumber, access & ~(1 << USLOSS_MMU_DIRTY));
 
-            dummy = USLOSS_MmuUnmap(TAG, (int)(long) currentFault->addr);
+            dummy = USLOSS_MmuUnmap(TAG, pageNumber);
         }
 
         // initializing frame by reading in from disk
@@ -487,6 +513,22 @@ static int Pager(char *buf)
             frameTable[freeFrameNumber].dirty = CLEAN_ON_DISK;
 
             // read from disk
+            dummy = USLOSS_MmuMap(TAG, pageNumber, freeFrameNumber, 
+                    USLOSS_MMU_PROT_RW);
+
+            void* memRegion = USLOSS_MmuRegion(&dummy);
+            void* buffer = malloc(USLOSS_MmuPageSize());
+            
+            track = processes[currentFault->pid % MAXPROC].pageTable[pageNumber].diskBlock / 2;
+            first = (processes[currentFault->pid % MAXPROC].pageTable[pageNumber].diskBlock % 2) * 8;
+
+            diskReadReal(SWAP_DISK, track, first, NUM_SECTORS, buffer);
+            
+            // and assign content to frame
+            memcpy(memRegion + pageNumber * USLOSS_MmuPageSize(), buffer, USLOSS_MmuPageSize());
+            
+            free(buffer);
+            dummy = USLOSS_MmuUnmap(TAG, oldPageNumber);
         }
         
 
