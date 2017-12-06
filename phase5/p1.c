@@ -29,6 +29,7 @@ p1_fork(int pid)
 
         for (i = 0; i < numPages; i++) {
             processes[pid % MAXPROC].pageTable[i].state = UNUSED;
+            processes[pid % MAXPROC].pageTable[i].frame = NO_FRAME;
         }
     }
 } /* p1_fork */
