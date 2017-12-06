@@ -41,6 +41,8 @@ int numFrames = -1;
 int numPagers = -1;
 int pagerPids[MAXPAGERS];
 
+int clockHand = 0;
+
 
 static void FaultHandler(int type, void * offset);
 static int Pager(char *buf);
@@ -202,6 +204,7 @@ void* vmInitReal(int mappings, int pages, int frames, int pagers)
 
     for (i = 0; i < frames; i++) {
         frameTable[i].used = 0;
+        frameTable[i].usedRecently = 0;
         frameTable[i].ownerPid = -1;
         frameTable[i].pageNumber = -1;
     }
@@ -377,9 +380,9 @@ static void FaultHandler(int type /* MMU_INT */,
 
 
     MboxSend(faultMBoxID, NULL, 0);
-    MboxReceive(faults[nextFaultMsgLocation-1 % MAXPROC].replyMbox, NULL, 0);
+    MboxReceive(faults[(nextFaultMsgLocation-1) % MAXPROC].replyMbox, NULL, 0);
 
-    MboxRelease(faults[nextFaultMsgLocation-1 % MAXPROC].replyMbox);
+    MboxRelease(faults[(nextFaultMsgLocation-1) % MAXPROC].replyMbox);
 } /* FaultHandler */
 
 
@@ -410,12 +413,12 @@ static int Pager(char *buf)
         MboxReceive(faultMBoxID, NULL, 0);
         if (isZapped()) break;
 
-        currentFault = &faults[nextFaultMsgLocation-1 % MAXPROC];
+        currentFault = &faults[(nextFaultMsgLocation-1) % MAXPROC];
         int pageNumber = (int)(long) (currentFault->addr)/USLOSS_MmuPageSize();
 
+        // first-time pages
         if (processes[currentFault->pid % MAXPROC].pageTable[pageNumber].state == UNUSED) {
             firstTime = 1;
-            processes[currentFault->pid % MAXPROC].pageTable[pageNumber].state = IN_PAGE_TABLE;
             vmStats.new++;
         }
 
@@ -423,6 +426,7 @@ static int Pager(char *buf)
         int freeFrameNumber = findFrameNumber(); // cheating
 
         frameTable[freeFrameNumber].used = 1;
+        frameTable[freeFrameNumber].usedRecently = 1;
 
         
         /* If there isn't one then use clock algorithm to
@@ -430,7 +434,21 @@ static int Pager(char *buf)
 
         /* Load page into frame from disk, if necessary */
 
-        processes[currentFault->pid % MAXPROC].pageTable[pageNumber].frame = freeFrameNumber; // cheating
+        // current page gets new frame
+        processes[currentFault->pid % MAXPROC].pageTable[pageNumber].frame = freeFrameNumber;
+        processes[currentFault->pid % MAXPROC].pageTable[pageNumber].state = IN_PAGE_TABLE;
+        
+        // another page might think this frame belongs to it... undo this
+        if (frameTable[freeFrameNumber].pageNumber >= 0) {
+            processes[currentFault->pid % MAXPROC].pageTable[
+                frameTable[freeFrameNumber].pageNumber].frame = -1;
+            processes[currentFault->pid % MAXPROC].pageTable[
+                frameTable[freeFrameNumber].pageNumber].state = NOT_IN_PAGE_TABLE;
+        }
+        
+        // update frame table
+        frameTable[freeFrameNumber].pageNumber = pageNumber;
+        // USLOSS_Console("page: %d, frame: %d\n", pageNumber, processes[currentFault->pid % MAXPROC].pageTable[pageNumber].frame);
 
         // initializing frame
         if (firstTime) {
@@ -438,14 +456,20 @@ static int Pager(char *buf)
             dummy = USLOSS_MmuGetTag(&tag);
             dummy = USLOSS_MmuMap(tag, pageNumber, freeFrameNumber, 
                 USLOSS_MMU_PROT_RW);
-            dummy++;
-            memset((char *) (USLOSS_MmuRegion(&dummy) + (int)(long)currentFault->addr), 0, USLOSS_MmuPageSize());
-            // dummy = USLOSS_MmuUnmap(tag, (int)(long) currentFault->addr);
+            
+            // USLOSS_Console("frame: %d\n", freeFrameNumber);
+            // USLOSS_Console("phase5 %p\n", (USLOSS_MmuRegion(&dummy) + (int)(long)currentFault->addr));
+            memset((char *) (USLOSS_MmuRegion(&dummy) + (int)(long)currentFault->addr), 
+                0, USLOSS_MmuPageSize());
+            dummy = USLOSS_MmuUnmap(tag, (int)(long) currentFault->addr);
         }
+
 
         /* Unblock waiting (faulting) process */
         MboxSend(currentFault->replyMbox, NULL, 0);
     }
+
+    dummy++;
     return 0;
 } /* Pager */
 
@@ -458,6 +482,13 @@ int findFrameNumber() {
     // only looks for unused frames
     for (i = 0; i < numFrames; i++) {
         if (!frameTable[i].used) return i;
+    }
+
+    // looks for frame that hasn't been used recently
+    for (i = 0; i < numFrames+1; i++) {
+        if (!frameTable[clockHand % numFrames].usedRecently) return clockHand % numFrames;
+        frameTable[clockHand % numFrames].usedRecently = 0;
+        clockHand++;
     }
 
     return -1;
