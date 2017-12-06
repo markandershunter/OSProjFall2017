@@ -57,13 +57,13 @@ p1_switch(int old, int new)
     if (new >= 11) {
         for (i = 0; i < numPages; i++) {
             if (processes[new % MAXPROC].pageTable[i].state == IN_PAGE_TABLE) {
-                dummy = USLOSS_MmuMap(tag, i, 
+                dummy = USLOSS_MmuMap(tag, i,
                     processes[new % MAXPROC].pageTable[i].frame, USLOSS_MMU_PROT_RW);
             }
         }
     }
-    
-    
+
+
     dummy++;
 
     vmStats.switches++;
