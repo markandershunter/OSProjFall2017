@@ -36,6 +36,8 @@ void *vmRegion;
 
 int numPages = -1;
 
+int numFrames = -1;
+
 int numPagers = -1;
 int pagerPids[MAXPAGERS];
 
@@ -196,6 +198,7 @@ void* vmInitReal(int mappings, int pages, int frames, int pagers)
     }
 
     frameTable = malloc(sizeof(Frame) * frames);
+    numFrames = frames;
 
     for (i = 0; i < frames; i++) {
         frameTable[i].used = 0;
@@ -274,7 +277,7 @@ void vmDestroyReal(void)
 
     int i = USLOSS_MmuDone();
     i++;
-    
+
     /*
     * Kill the pagers here.
     */
@@ -377,7 +380,6 @@ static void FaultHandler(int type /* MMU_INT */,
     MboxReceive(faults[nextFaultMsgLocation-1 % MAXPROC].replyMbox, NULL, 0);
 
     MboxRelease(faults[nextFaultMsgLocation-1 % MAXPROC].replyMbox);
-
 } /* FaultHandler */
 
 
@@ -406,40 +408,58 @@ static int Pager(char *buf)
     while(!isZapped()) {
         /* Wait for fault to occur (receive from mailbox) */
         MboxReceive(faultMBoxID, NULL, 0);
-
         if (isZapped()) break;
 
         currentFault = &faults[nextFaultMsgLocation-1 % MAXPROC];
+        int pageNumber = (int)(long) (currentFault->addr)/USLOSS_MmuPageSize();
 
-        if (processes[currentFault->pid % MAXPROC].pageTable[0].state == UNUSED) {
+        if (processes[currentFault->pid % MAXPROC].pageTable[pageNumber].state == UNUSED) {
             firstTime = 1;
-            processes[currentFault->pid % MAXPROC].pageTable[0].state = IN_PAGE_TABLE;
+            processes[currentFault->pid % MAXPROC].pageTable[pageNumber].state = IN_PAGE_TABLE;
             vmStats.new++;
         }
 
         /* Look for free frame */
-        int freeFrameNumber = 0; // cheating
+        int freeFrameNumber = findFrameNumber(); // cheating
+
+        frameTable[freeFrameNumber].used = 1;
+
         
         /* If there isn't one then use clock algorithm to
          * replace a page (perhaps write to disk) */
 
         /* Load page into frame from disk, if necessary */
 
-        processes[currentFault->pid % MAXPROC].pageTable[0].frame = freeFrameNumber; // cheating
-        
+        processes[currentFault->pid % MAXPROC].pageTable[pageNumber].frame = freeFrameNumber; // cheating
+
         // initializing frame
         if (firstTime) {
             // zero-ing out frame
             dummy = USLOSS_MmuGetTag(&tag);
-            dummy = USLOSS_MmuMap(tag, (int)(long) currentFault->addr, 
-                freeFrameNumber, USLOSS_MMU_PROT_RW);
+            dummy = USLOSS_MmuMap(tag, pageNumber, freeFrameNumber, 
+                USLOSS_MMU_PROT_RW);
             dummy++;
-            memset((char *) USLOSS_MmuRegion(&dummy), 0, USLOSS_MmuPageSize());
+            memset((char *) (USLOSS_MmuRegion(&dummy) + (int)(long)currentFault->addr), 0, USLOSS_MmuPageSize());
             // dummy = USLOSS_MmuUnmap(tag, (int)(long) currentFault->addr);
         }
+
         /* Unblock waiting (faulting) process */
         MboxSend(currentFault->replyMbox, NULL, 0);
     }
     return 0;
 } /* Pager */
+
+
+
+
+int findFrameNumber() {
+    int i;
+
+    // only looks for unused frames
+    for (i = 0; i < numFrames; i++) {
+        if (!frameTable[i].used) return i;
+    }
+
+    return -1;
+}
 
