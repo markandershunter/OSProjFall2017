@@ -21,16 +21,15 @@
 }
 
 int Sleep(int seconds){
-    USLOSS_Sysargs sysArg;
+    USLOSS_Sysargs sysArgs;
 
     CHECKMODE;
 
-    sysArg.number = SYS_SLEEP;
-    sysArg.arg1 = (void *) (long) seconds;
+    sysArgs.arg1 = (void *) (long) seconds;
 
-    USLOSS_Syscall(&sysArg);
+    USLOSS_Syscall(&sysArgs);
 
-    return (int)(long) sysArg.arg4;
+    return (int)(long) sysArgs.arg4;
 }
 
 
@@ -54,7 +53,6 @@ int DiskRead(void *dbuff, int unit, int track, int first, int sectors, int *stat
     return *status;
 }
 
-
 int DiskWrite(void *dbuff, int unit, int track, int first, int sectors, int *status){
     USLOSS_Sysargs sysArg;
 
@@ -75,7 +73,6 @@ int DiskWrite(void *dbuff, int unit, int track, int first, int sectors, int *sta
 }
 
 
-
 int DiskSize(int unit, int *sector, int *track, int *disk){
     USLOSS_Sysargs sysArg;
 
@@ -93,10 +90,30 @@ int DiskSize(int unit, int *sector, int *track, int *disk){
 }
 
 
-
 int TermRead(char *buff, int bsize, int unit_id, int *nread){
+    // USLOSS_Sysargs sysArgs;
+    //
+    // CHECKMODE;
+    //
+    // sysArgs.arg1 = buff;
+    // sysArgs.arg2 = (void*) (long) bsize;
+    // sysArgs.arg3 = (void*) (long) unit_id;
+    //
+    // USLOSS_Syscall(&sysArgs);
+
     return 0;
 }
+
 int TermWrite(char *buff, int bsize, int unit_id, int *nwrite){
+    // USLOSS_Sysargs sysArgs;
+    //
+    // CHECKMODE;
+    //
+    // sysArgs.arg1 = buff;
+    // sysArgs.arg2 = (void*) (long) bsize;
+    // sysArgs.arg3 = (void*) (long) unit_id;
+    //
+    // USLOSS_Syscall(&sysArgs);
+
     return 0;
 }
