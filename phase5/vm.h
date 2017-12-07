@@ -10,6 +10,8 @@
 #define NO_OWNER        -1
 #define CLEAN_ON_DISK   0
 #define CLEAN_BLANK     1
+#define LOCKED          0
+#define UNLOCKED        1
 
 
 #define SWAP_DISK       1
@@ -38,6 +40,7 @@ typedef struct Frame {
     int ownerPid;       // which process owns this frame
     int pageNumber;     // page that is in this frame
     int dirty;          // is new data in this frame that's not on disk?
+    int lock;           // has the frame been chosen by the pager recently?
 } Frame;
 
 

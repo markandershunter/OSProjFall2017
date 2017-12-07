@@ -13,6 +13,7 @@ extern int debugflag;
 
 extern Process processes[MAXPROC];
 extern int numPages;
+extern int maxPagerPid;
 extern VmStats  vmStats;
 
 void
@@ -39,15 +40,15 @@ void
 p1_switch(int old, int new)
 {
     int i, tag, dummy;
-    // USLOSS_Console("%d %d\n", old, new);
-    // if (old == 0) USLOSS_Console("hooray\n");
+    // if (old != 1 && old != 5)USLOSS_Console("%d %d\n", old, new);
+
 
     if (DEBUG && debugflag)
         USLOSS_Console("p1_switch() called: old = %d, new = %d\n", old, new);
 
     dummy = USLOSS_MmuGetTag(&tag);
 
-    if (old >= 11) {
+    if (old > maxPagerPid) {
         for (i = 0; i < numPages; i++) {
             // USLOSS_Console("testing\n");
             if (processes[old % MAXPROC].pageTable[i].state != UNUSED) {
@@ -56,7 +57,7 @@ p1_switch(int old, int new)
         }
     }
 
-    if (new >= 11) {
+    if (new > maxPagerPid) {
         for (i = 0; i < numPages; i++) {
             if (processes[new % MAXPROC].pageTable[i].state == IN_PAGE_TABLE) {
                 dummy = USLOSS_MmuMap(tag, i,

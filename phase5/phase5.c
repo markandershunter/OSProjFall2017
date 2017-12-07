@@ -27,6 +27,7 @@ FaultMsg faults[MAXPROC]; /* Note that a process can have only
                            * one fault at a time, so we can
                            * allocate the messages statically
                            * and index them by pid. */
+int currentFaultMsgLocation = 0;
 int nextFaultMsgLocation = 0;
 int faultMBoxID;
 
@@ -40,9 +41,13 @@ int numFrames = -1;
 
 int numPagers = -1;
 int pagerPids[MAXPAGERS];
+int maxPagerPid = -1;
 
 int clockHand = 0;
 int nextEmptyDiskBlock = 0;
+
+int framesListMbox;
+int frameLockMbox;
 
 
 static void FaultHandler(int type, void * offset);
@@ -208,7 +213,11 @@ void* vmInitReal(int mappings, int pages, int frames, int pagers)
         frameTable[i].ownerPid = NO_OWNER;
         frameTable[i].pageNumber = -1;
         frameTable[i].dirty = CLEAN_BLANK;
+        frameTable[i].lock = UNLOCKED;
     }
+
+    framesListMbox = MboxCreate(1, 0);
+    frameLockMbox = MboxCreate(1, 0);
 
    /* 
     * Create the fault mailbox.
@@ -222,6 +231,7 @@ void* vmInitReal(int mappings, int pages, int frames, int pagers)
     for (i = 0; i < pagers; i++) {
         pagerPids[i] = fork1("pager", Pager, NULL, 4 * USLOSS_MIN_STACK, PAGER_PRIORITY);
     }
+    maxPagerPid = pagerPids[pagers-1];
 
     /*
     * Zero out, then initialize, the vmStats structure
@@ -372,6 +382,7 @@ static void FaultHandler(int type /* MMU_INT */,
     assert(cause == USLOSS_MMU_FAULT);
     vmStats.faults++;
 
+
    /*
     * Fill in faults[pid % MAXPROC], send it to the pagers, and wait for the
     * reply.
@@ -379,13 +390,32 @@ static void FaultHandler(int type /* MMU_INT */,
     faults[nextFaultMsgLocation % MAXPROC].pid = getpid();
     faults[nextFaultMsgLocation % MAXPROC].addr = arg;
     faults[nextFaultMsgLocation % MAXPROC].replyMbox = MboxCreate(1,0);
+    int myFaultMsgLocation = nextFaultMsgLocation;
     nextFaultMsgLocation++;
 
 
+    // tell pager there is a fault
     MboxSend(faultMBoxID, NULL, 0);
-    MboxReceive(faults[(nextFaultMsgLocation-1) % MAXPROC].replyMbox, NULL, 0);
 
-    MboxRelease(faults[(nextFaultMsgLocation-1) % MAXPROC].replyMbox);
+    // wait for pager's response
+    MboxReceive(faults[myFaultMsgLocation % MAXPROC].replyMbox, NULL, 0);
+
+    // release mailbox that process was waiting on
+    MboxRelease(faults[myFaultMsgLocation % MAXPROC].replyMbox);
+
+    int pageNumber = (int)(long) arg / USLOSS_MmuPageSize();
+    int frameNumber = processes[getpid() % MAXPROC].pageTable[pageNumber].frame;
+
+    // acquire frames list mutex to change lock status
+    MboxSend(framesListMbox, NULL, 0);
+    frameTable[frameNumber].lock = UNLOCKED;
+
+    // alert any process waiting for a frame to unlock
+    MboxCondSend(frameLockMbox, NULL, 0);
+
+    // release frames list mutex now that lock status has
+    // been updated
+    MboxReceive(framesListMbox, NULL, 0);
 } /* FaultHandler */
 
 
@@ -411,13 +441,16 @@ static int Pager(char *buf)
     int access = 0;
     int track, first;
 
+    dummy = USLOSS_PsrSet(USLOSS_PsrGet() | USLOSS_PSR_CURRENT_INT);
+
     while(!isZapped()) {
         /* Wait for fault to occur (receive from mailbox) */
         MboxReceive(faultMBoxID, NULL, 0);
         if (isZapped()) break;
 
         // get fault info
-        currentFault = &faults[(nextFaultMsgLocation-1) % MAXPROC];
+        currentFault = &faults[currentFaultMsgLocation % MAXPROC];
+        currentFaultMsgLocation++;
         int pageNumber = (int)(long) (currentFault->addr)/USLOSS_MmuPageSize();
 
         if (processes[currentFault->pid % MAXPROC].pageTable[pageNumber].state == UNUSED) {
@@ -428,23 +461,25 @@ static int Pager(char *buf)
 
         /* Look for free frame. If there isn't one then use clock 
          * algorithm to replace a page (perhaps write to disk) */
-        int freeFrameNumber = findFrameNumber();
+        MboxSend(framesListMbox, NULL, 0);
+        int freeFrameNumber = findFrameNumber(); 
+        
 
         int oldOwner = frameTable[freeFrameNumber].ownerPid;
         int oldPageNumber = frameTable[freeFrameNumber].pageNumber;
+        // USLOSS_Console("oldOwner: %d, oldPage: %d, freeFrame: %d\n", oldOwner, oldPageNumber, freeFrameNumber);
 
         dummy = USLOSS_MmuGetAccess(freeFrameNumber, &access);
-
 
         // another page might think this frame belongs to it... undo this
         if (frameTable[freeFrameNumber].ownerPid != NO_OWNER) {
             if (access & USLOSS_MMU_DIRTY) {
 
-                dummy = USLOSS_MmuMap(TAG, oldPageNumber, freeFrameNumber, 
-                    USLOSS_MMU_PROT_RW);
-
                 void* memRegion = USLOSS_MmuRegion(&dummy);
                 void* buffer = malloc(USLOSS_MmuPageSize());
+
+                dummy = USLOSS_MmuMap(TAG, oldPageNumber, freeFrameNumber, 
+                    USLOSS_MMU_PROT_RW);
                 memcpy(buffer, memRegion + oldPageNumber * USLOSS_MmuPageSize(),
                     USLOSS_MmuPageSize());
 
@@ -460,7 +495,9 @@ static int Pager(char *buf)
                     first = (processes[oldOwner % MAXPROC].pageTable[oldPageNumber].diskBlock % 2) * 8;
                 }
 
+                MboxReceive(framesListMbox, NULL, 0);
                 diskWriteReal(SWAP_DISK, track, first, NUM_SECTORS, buffer);
+                MboxSend(framesListMbox, NULL, 0);
 
                 free(buffer);
                 dummy = USLOSS_MmuUnmap(TAG, oldPageNumber);
@@ -522,8 +559,10 @@ static int Pager(char *buf)
             track = processes[currentFault->pid % MAXPROC].pageTable[pageNumber].diskBlock / 2;
             first = (processes[currentFault->pid % MAXPROC].pageTable[pageNumber].diskBlock % 2) * 8;
 
+            MboxReceive(framesListMbox, NULL, 0);
             diskReadReal(SWAP_DISK, track, first, NUM_SECTORS, buffer);
-            
+            MboxSend(framesListMbox, NULL, 0);
+
             // and assign content to frame
             memcpy(memRegion + pageNumber * USLOSS_MmuPageSize(), buffer, USLOSS_MmuPageSize());
             
@@ -544,9 +583,8 @@ static int Pager(char *buf)
         frameTable[freeFrameNumber].used = USED;
         frameTable[freeFrameNumber].ownerPid = currentFault->pid;
         frameTable[freeFrameNumber].pageNumber = pageNumber;
-        
-        
 
+        MboxReceive(framesListMbox, NULL, 0);
 
         /* Unblock waiting (faulting) process */
         MboxSend(currentFault->replyMbox, NULL, 0);
@@ -562,24 +600,37 @@ static int Pager(char *buf)
 int findFrameNumber() {
     int i, dummy;
 
-    // only looks for unused frames
-    for (i = 0; i < numFrames; i++) {
-        if (frameTable[i].used == NOT_USED) return i;
-    }
-
-    // looks for frame that hasn't been used recently
-    for (i = 0; i < numFrames+1; i++) {
-        int access = 0;
-        dummy = USLOSS_MmuGetAccess(i, &access);
-        
-        if (~(access & USLOSS_MMU_REF)) {
-            return clockHand++ % numFrames;
+    while (1) {
+        // only looks for unused frames
+        for (i = 0; i < numFrames; i++) {
+            if (frameTable[i].used == NOT_USED) {
+                frameTable[i % numFrames].lock = LOCKED;
+                return i;
+            }
         }
 
-        dummy = USLOSS_MmuSetAccess(i, access | USLOSS_MMU_REF);
-        dummy++;
+        // looks for frame that hasn't been used recently
+        for (i = 0; i < numFrames+1; i++) {
+            int access = 0;
+            dummy = USLOSS_MmuGetAccess(i % numFrames, &access);
+            
+            if (~(access & USLOSS_MMU_REF) && frameTable[clockHand % numFrames].lock == UNLOCKED) {
+                frameTable[clockHand % numFrames].lock = LOCKED;
+                return clockHand++ % numFrames;
+            }
 
-        clockHand++;
+            dummy = USLOSS_MmuSetAccess(i, access | USLOSS_MMU_REF);
+            dummy++;
+
+            clockHand++;
+        }
+
+        // release framesList mutex before blocking on frameLock mutex
+        MboxReceive(framesListMbox, NULL, 0);
+        MboxReceive(frameLockMbox, NULL, 0);
+
+        // reacquire framesList mutex
+        MboxSend(framesListMbox, NULL, 0);
     }
 
     return -1;
